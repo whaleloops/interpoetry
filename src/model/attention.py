@@ -46,7 +46,7 @@ class Encoder(nn.Module):
         self.share_enc = params.share_enc
         self.pad_index = params.pad_index
         self.freeze_enc_emb = params.freeze_enc_emb
-        self.max_len = params.max_len
+        # self.max_len = params.max_len
         self.dis_input_proj = params.dis_input_proj
         assert not self.share_lang_emb or len(set(params.n_words)) == 1
         assert 0 <= self.share_enc <= self.n_enc_layers + 1

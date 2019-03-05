@@ -12,6 +12,7 @@ import os, io
 import sys
 import copy
 import re, json, collections
+import numpy as np
 
 from src.data.tokenization import BertTokenizer
 from src.data.pron_dict import PronDict
@@ -25,43 +26,63 @@ random.seed(42)
 MAX_SENT_LEN=130
 PUNC = ['.','"',u'？',u'。',u'！',u'”']
 
-def split_train_valid(txt_path, train_prob):
+def zng(paragraph):
+    for sent in re.findall(u'.+[.。?？!！\"”]', paragraph, flags=re.U):
+        yield sent
+
+def split_train_valid(txt_path, train_prob, pron_dict, isjueju):
     train_input = []
     valid_input = []
     with io.open(txt_path, "r", encoding='utf8') as f:
         for line in f:
             s = line.rstrip()
             if len(s) != 0:
-                if random.random() < train_prob:
-                    train_input.append(s)
+                if isjueju:
+                    if len(s)>31:
+                        end_sent_2_tok = s[14]
+                        end_sent_4_tok = s[30]
+                        if pron_dict.co_rhyme(end_sent_2_tok, end_sent_4_tok):
+                            if random.random() < train_prob:
+                                train_input.append(s)
+                            else:
+                                valid_input.append(s)
                 else:
-                    valid_input.append(s)
+                    if random.random() < train_prob:
+                        train_input.append(s)
+                    else:
+                        valid_input.append(s)
+    print ("num train data: %d"% len(train_input))
+    print ("num valid data: %d"% len(valid_input))
     return train_input, valid_input
 
 
 def get_data(input_sents, tokenizer):
     positions = []
     sentences = []
+    sentences_len = []
+    length_in_count = np.zeros(int(MAX_SENT_LEN/10)+1)
     unk_words = {}
     line_count=0
     too_long_sent_count = 0
     long_sent_count = 0
     for ind in range(len(input_sents)):
         sent=input_sents[ind]
+        # realmax_len=MAX_SENT_LEN
+        realmax_len = np.random.normal(loc=99.0, scale=10.0, size=None)
+        if realmax_len > MAX_SENT_LEN:
+            realmax_len = MAX_SENT_LEN 
+        realmax_len = int(realmax_len)
 
-        if len(sent) > MAX_SENT_LEN:
+        if len(sent) > realmax_len:
             # print("Long sentence with len %i in line %i." % (len(sent),line_count))
-            sent=sent[0:MAX_SENT_LEN]
-            pos = []
-            for p in PUNC:
-                if p in sent:
-                    pos.append(sent.rindex(p))
-            if len(pos) == 0:
+            sent=sent[0:realmax_len]
+            sent = list(zng(sent)) # ends with punc
+            if len(sent) == 0:
                 sent=''
                 too_long_sent_count+=1
             else:
-                pos = max(pos)
-                sent=sent[0:pos]
+                assert len(sent)==1
+                sent = sent[0]
                 long_sent_count+=1
         token_s = tokenizer.tokenize(sent)
         # if len(token_s) == 0:
@@ -75,9 +96,14 @@ def get_data(input_sents, tokenizer):
                 unk_words[w] = unk_words.get(w, 0) + 1
             # add sentence
             positions.append([len(sentences), len(sentences) + len(indexed)])
+            sentences_len.append(len(indexed))
             sentences.extend(indexed)
             sentences.append(-1)
             line_count+=1
+            if len(token_s) > 130:
+                length_in_count[-1] += 1
+            else:
+                length_in_count[int(len(token_s)/10)] += 1
         # else:
         #     print("Short sentence in line %i. <=10" % line_count)
 
@@ -94,6 +120,12 @@ def get_data(input_sents, tokenizer):
     print(long_sent_count)
     print('long sentence that can not convert count:')
     print(too_long_sent_count)
+    length_in_count = length_in_count/np.sum(length_in_count)
+    print('sentence length bin count:')
+    print(length_in_count)
+    print('sentence length mean and std:')
+    print(np.mean(sentences_len))
+    print(np.std(sentences_len))
     return data
 
 
@@ -105,6 +137,13 @@ if __name__ == '__main__':
     txt_path = sys.argv[2]
     bin_path_tr = sys.argv[2] + '.tr.pth'
     bin_path_vl = sys.argv[2] + '.vl.pth'
+    isjueju = sys.argv[3]
+    if isjueju.startswith('jue'):
+        isjueju = True
+    else:
+        isjueju = False
+    print ("is jueju?: ")
+    print (isjueju)
     vocab_rytm_file = 'data/vocab_rytm.json'
     assert os.path.isfile(voc_path)
     assert os.path.isfile(txt_path)
@@ -142,7 +181,7 @@ if __name__ == '__main__':
     
     if txt_path.strip()[-3:]=='txt':
         # split train_valid
-        train_sents, valid_sents = split_train_valid(txt_path, 1.1)
+        train_sents, valid_sents = split_train_valid(txt_path, 1.1, pron_dict, isjueju)
         bin_path_tr = txt_path.strip()[:-4]
         bin_path_tr += '.pth'
         # process data
@@ -176,7 +215,7 @@ if __name__ == '__main__':
     else:
         # split train_valid
         print("Spliting train valid from input...")
-        train_sents, valid_sents = split_train_valid(txt_path, 0.75)
+        train_sents, valid_sents = split_train_valid(txt_path, 0.75, pron_dict, isjueju)
         # save valid
         with io.open(txt_path+ '.vl.txt', "w", encoding='utf8') as f:
             for line in valid_sents:

@@ -189,7 +189,7 @@ class TrainerMT(MultiprocessingEventLoop):
         """
         Randomly shuffle input words.
         """
-        if self.params.word_shuffle == 0:
+        if self.params.word_shuffle == 0 or self.params.id2lang[lang_id]=='pm':
             return x, l
 
         # define noise word scores
@@ -216,7 +216,7 @@ class TrainerMT(MultiprocessingEventLoop):
         """
         Randomly drop input words.
         """
-        if self.params.word_dropout == 0:
+        if self.params.word_dropout == 0 or self.params.id2lang[lang_id]=='pm':
             return x, l
         assert 0 < self.params.word_dropout < 1
 
@@ -636,12 +636,15 @@ class TrainerMT(MultiprocessingEventLoop):
 
                 # lang1 -> lang2
                 encoded = self.encoder(sent1, len1, lang_id=lang1_id)
-                max_len = int(1.5 * len1.max() + 10)
+                max_len = self.params.max_len[lang2_id]
+                if max_len>70:
+                    max_len = np.random.randint(70, high=max_len)
                 if params.otf_sample == -1:
                     sent2, len2, _ = self.decoder.generate(encoded, lang_id=lang2_id, max_len=max_len)
                 else:
                     sent2, len2, _ = self.decoder.generate(encoded, lang_id=lang2_id, max_len=max_len,
                                                            sample=True, temperature=params.otf_sample)
+                # sent2, len2 = self.word_dropout(sent2, len2, lang2_id)
 
                 # keep cached batches on CPU for easier transfer
                 assert not any(x.is_cuda for x in [sent1, sent2, sent3])

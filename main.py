@@ -131,8 +131,8 @@ def get_parser():
                         help="Number of parallel sentences (-1 for everything)")
     parser.add_argument("--n_back", type=int, default=0,
                         help="Number of back-parallel sentences (-1 for everything)")
-    parser.add_argument("--max_len", type=int, default=175,
-                        help="Maximum length of sentences (after BPE)")
+    parser.add_argument("--max_len", type=str, default='175,175',
+                        help="Maximum length of sentences (after BPE) for lang1 and lang2")
     parser.add_argument("--max_vocab", type=int, default=-1,
                         help="Maximum vocabulary size (-1 to disable)")
     # training steps
@@ -262,7 +262,11 @@ def main(params):
 
     # evaluation mode
     if params.eval_only:
-        evaluator.run_all_evals(0)
+        scores = evaluator.run_all_evals(0)
+        # print / JSON log
+        for k, v in scores.items():
+            logger.info('%s -> %.6f' % (k, v))
+        logger.info("__log__:%s" % json.dumps(scores))
         exit()
 
     # language model pretraining

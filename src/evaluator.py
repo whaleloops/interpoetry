@@ -51,22 +51,40 @@ class EvaluatorMT(object):
             dico = self.data['dico'][lang]
             self.bpe_end.append(np.array([not dico[i].endswith('@@') for i in range(dico.__len__())]))
 
-    def eval_rythm(batch_ids):
+    def eval_rythm(self, batch_ids):
         correct=0
+        ntcount=0
         batch_ids = batch_ids.cpu().detach().numpy()
-        for batch_id in batch_ids:
-            if len(batch_ids) >= 32:
-                end_sent_2_tok = [batch_id[14]]
-                end_sent_4_tok = [batch_id[30]]
-                rythms_2 = self.dico['pm'].convert_ids_to_rythms(end_sent_2_tok)
-                rythms_4 = self.dico['pm'].convert_ids_to_rythms(end_sent_4_tok)
-                for a_rhyme in rythms_2:
-                    if a_rhyme in rythms_4:
-                        correct+= 1
-                        break
-            else:
-                correct+= 0
-        return correct
+        unk_index = self.params.unk_index
+
+        end_sent_2_toks = batch_ids[15,:]
+        end_sent_4_toks = batch_ids[31,:]
+
+        if batch_ids.shape[0]>33:
+            for idx in range(batch_ids.shape[1]):
+                end_sent_2_tok = [end_sent_2_toks[idx]]
+                end_sent_4_tok = [end_sent_4_toks[idx]]
+                rythms_2 = self.dico['pm'].convert_ids_to_rythms(end_sent_2_tok)[0]
+                rythms_4 = self.dico['pm'].convert_ids_to_rythms(end_sent_4_tok)[0]
+                if (0 in rythms_2) or (0 in rythms_4) or (end_sent_2_tok==unk_index) or (end_sent_4_tok==unk_index):
+                    ntcount += 1
+                else:
+                    tmp=0
+                    for a_rhyme in rythms_2:
+                        if a_rhyme in rythms_4:
+                            tmp += 1
+                            break
+                    # if tmp==0:
+                    #     print('not rythm: %s, %s' % (str(rythms_2),str(rythms_4)))
+                    #     print(end_sent_2_tok)
+                    #     print(end_sent_4_tok)
+                    #     print(self.dico['pm'].convert_ids_to_tokens(batch_ids[:,idx]))
+                    correct+=tmp
+
+        else:
+            correct += 0
+
+        return correct, ntcount
 
     def get_pair_for_mono(self, lang):
         """
@@ -95,7 +113,7 @@ class EvaluatorMT(object):
         """
         Create a new iterator for a dataset.
         """
-        assert data_type in ['valid', 'test']
+        assert data_type in ['valid', 'test1', 'test2']
         if lang2 is None or lang1 == lang2:
             for batch in self.mono_iterator(data_type, lang1):
                 yield batch if lang2 is None else (batch, batch)
@@ -152,7 +170,7 @@ class EvaluatorMT(object):
 
     def eval_mono(self, lang, data_type, trainer, scores):
         logger.info("Evaluating Mono %s  (%s) ..." % (lang, data_type))
-        assert data_type in ['valid', 'test']
+        assert data_type in ['valid', 'test1', 'test2']
         self.encoder.eval()
         self.decoder.eval()
         params = self.params
@@ -220,6 +238,7 @@ class EvaluatorMT(object):
         sent_gold = x_gold.numpy()
         sent_pred = x_pred.numpy()
         sent_blank = x_blank.numpy()
+        assert sent_pred.shape == sent_gold.shape
 
         mask = sent_blank == self.blank_index
         total = np.sum(mask)
@@ -230,11 +249,11 @@ class EvaluatorMT(object):
 
 
 
-    def eval_para(self, lang1, lang2, data_type, scores):
+    def eval_para(self, lang1, lang2, data_type, scores, device):
         """
         Evaluate lang1 -> lang2 perplexity and BLEU scores.
         """
-        logger.info("Evaluating %s -> %s (%s) ..." % (lang1, lang2, data_type))
+        logger.info("Evaluating Para %s -> %s (%s) ..." % (lang1, lang2, data_type))
         assert data_type in ['valid', 'test']
         self.encoder.eval()
         self.decoder.eval()
@@ -248,6 +267,9 @@ class EvaluatorMT(object):
         # for perplexity
         loss_fn2 = nn.CrossEntropyLoss(weight=self.decoder.loss_fn[lang2_id].weight, size_average=False)
         n_words2 = self.params.n_words[lang2_id]
+        rytm_correct = 0
+        rytm_ntcount = 0
+        rytm_total = 0
         count = 0
         xe_loss = 0
 
@@ -255,12 +277,17 @@ class EvaluatorMT(object):
 
             # batch
             (sent1, len1), (sent2, len2) = batch
-            sent1, sent2 = sent1.cuda(), sent2.cuda()
+            sent1, sent2 = sent1.to(device), sent2.to(device)
 
             # encode / decode / generate
             encoded = self.encoder(sent1, len1, lang1_id)
             decoded = self.decoder(encoded, sent2[:-1], lang2_id)
             sent2_, len2_, _ = self.decoder.generate(encoded, lang2_id)
+
+            a, b = self.eval_rythm(sent2_)
+            rytm_correct += a 
+            rytm_ntcount += b
+            rytm_total += sent1.shape[1]
 
             # cross-entropy loss
             xe_loss += loss_fn2(decoded.view(-1, n_words2), sent2[1:].view(-1)).item()
@@ -286,6 +313,7 @@ class EvaluatorMT(object):
         # update scores
         scores['ppl_%s_%s_%s' % (lang1, lang2, data_type)] = np.exp(xe_loss / count)
         scores['bleu_%s_%s_%s' % (lang1, lang2, data_type)] = bleu
+        scores['rytm_%s_%s_%s_para' % (lang1, lang2, data_type)] = float(rytm_correct)/(rytm_total-rytm_ntcount)
 
 
     def eval_back(self, lang1, lang2, lang3, data_type, scores, device):
@@ -293,7 +321,7 @@ class EvaluatorMT(object):
         Compute lang1 -> lang2 -> lang3 perplexity and BLEU scores.
         """
         logger.info("Evaluating %s -> %s -> %s (%s) ..." % (lang1, lang2, lang3, data_type))
-        assert data_type in ['valid', 'test']
+        assert data_type in ['valid', 'test1', 'test2']
         self.encoder.eval()
         self.decoder.eval()
         params = self.params
@@ -310,6 +338,7 @@ class EvaluatorMT(object):
         n_words3 = self.params.n_words[lang3_id]
         count = 0
         rytm_correct = 0
+        rytm_ntcount = 0
         rytm_total = 0
         xe_loss = 0
 
@@ -321,15 +350,19 @@ class EvaluatorMT(object):
 
             # encode / generate lang1 -> lang2
             encoded = self.encoder(sent1, len1, lang_id=lang1_id)
-            sent2_, len2_, _ = self.decoder.generate(encoded, lang_id=lang2_id)
+            max_len = self.params.max_len[lang2_id]
+            sent2_, len2_, _ = self.decoder.generate(encoded, lang_id=lang2_id, max_len=max_len)
 
 
             # encode / decode / generate lang2 -> lang3
             encoded = self.encoder(sent2_.to(device), len2_, lang2_id)
             decoded = self.decoder(encoded, sent3[:-1], lang3_id)
-            sent3_, len3_, _ = self.decoder.generate(encoded, lang3_id)
-            rytm_correct += self.eval_rythm(sent3_)
-            rytm_total += len1.shape[1]
+            max_len = self.params.max_len[lang3_id]
+            sent3_, len3_, _ = self.decoder.generate(encoded, lang3_id, max_len=max_len)
+            a, b = self.eval_rythm(sent3_)
+            rytm_correct += a 
+            rytm_ntcount += b
+            rytm_total += sent1.shape[1]
 
             # cross-entropy loss
             xe_loss += loss_fn3(decoded.view(-1, n_words3), sent3[1:].view(-1)).item()
@@ -371,9 +404,13 @@ class EvaluatorMT(object):
         logger.info("BLEU-4 : %f" % (bleus[4]))
 
         # update scores
+        logger.info("Rythem info: ")
+        logger.info(rytm_ntcount)
+        logger.info(rytm_total)
+        logger.info(float(rytm_correct)/(rytm_total))
         scores['ppl_%s_%s_%s_%s' % (lang1, lang2, lang3, data_type)] = np.exp(xe_loss / count)
         scores['bleu_%s_%s_%s_%s' % (lang1, lang2, lang3, data_type)] = float(bleus[0])
-        scores['rytm_%s_%s_%s_%s' % (lang1, lang2, lang3, data_type)] = float(rytm_correct)/rytm_total
+        scores['rytm_%s_%s_%s_%s_back' % (lang1, lang2, lang3, data_type)] = float(rytm_correct)/(rytm_total-rytm_ntcount)
 
     def run_all_evals(self, epoch):
         """
@@ -389,32 +426,41 @@ class EvaluatorMT(object):
             # before_gen = time.time() 
             lang2='sw'
             lang3='pm'
-            for data_type in ['test']:
-                self.eval_transfer(lang2, lang3, data_type, scores, device)
+            for data_type in ['test1']:
+                self.eval_transfer(lang2, lang3, data_type, scores, device, bleu_eval=False)
+            # gen_time1 = time.time() - before_gen
+
+            # lang1, lang2, lang3 = self.params.pivo_directions[0]
+            # before_gen = time.time() 
+            lang2='sw'
+            lang3='pm'
+            for data_type in ['test2']:
+                self.eval_transfer(lang2, lang3, data_type, scores, device, bleu_eval=True)
             # gen_time1 = time.time() - before_gen
             
-            # # before_gen = time.time()
-            # for lang in self.params.mono_directions:
-            #     for data_type in ['valid']:
-            #         self.eval_mono(lang, data_type, self.trainer, scores)
-            # # gen_time2 = time.time() - before_gen 
+            # before_gen = time.time()
+            for lang in self.params.mono_directions:
+                for data_type in ['valid']:
+                    self.eval_mono(lang, data_type, self.trainer, scores)
+            # gen_time2 = time.time() - before_gen 
 
-            # # before_gen = time.time()
-            # for lang1, lang2, lang3 in self.params.pivo_directions:
-            #     for data_type in ['valid']:
-            #         self.eval_back(lang1, lang2, lang3, data_type, scores, device)
-            # # gen_time3 = time.time() - before_gen 
+            # before_gen = time.time()
+            if self.params.lambda_xe_otfd>0:
+                for lang1, lang2, lang3 in self.params.pivo_directions:
+                    for data_type in ['valid']:
+                        self.eval_back(lang1, lang2, lang3, data_type, scores, device)
+            # gen_time3 = time.time() - before_gen 
 
             # logger.info('gen_time1: %f, gen_time2: %f, gen_time3: %f' %(gen_time1,gen_time2,gen_time3))
 
         return scores
 
-    def eval_transfer(self, lang1, lang2, data_type, scores, device):
+    def eval_transfer(self, lang1, lang2, data_type, scores, device, bleu_eval=False):
         """
         Evaluate lang1 -> lang2 perplexity and BLEU scores.
         """
         logger.info("Evaluating high quality transfer %s -> %s (%s) ..." % (lang1, lang2, data_type))
-        assert data_type in ['valid', 'test']
+        assert data_type in ['valid', 'test1', 'test2']
         self.encoder.eval()
         self.decoder.eval()
         params = self.params
@@ -429,6 +475,7 @@ class EvaluatorMT(object):
         n_words2 = self.params.n_words[lang2_id]
         count = 0
         rytm_correct = 0
+        rytm_ntcount = 0
         rytm_total = 0
         xe_loss = 0
 
@@ -436,14 +483,17 @@ class EvaluatorMT(object):
 
             # batch
             (sent1, len1) = batch
-            sent1 = sent1.cuda()
+            sent1 = sent1.to(device)
 
             # encode / decode / generate
             encoded = self.encoder(sent1, len1, lang1_id)
-            sent2_, len2_, _ = self.decoder.generate(encoded, lang2_id)
+            max_len = self.params.max_len[lang2_id]
+            sent2_, len2_, _ = self.decoder.generate(encoded, lang2_id, max_len=max_len)
 
-            rytm_correct += self.eval_rythm(sent2_)
-            rytm_total += len1.shape[1]
+            a, b = self.eval_rythm(sent2_)
+            rytm_correct += a 
+            rytm_ntcount += b
+            rytm_total += sent1.shape[1]
 
             # convert to text
             txt.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params))
@@ -454,10 +504,27 @@ class EvaluatorMT(object):
         # export sentences to hypothesis file / restore BPE segmentation
         with open(hyp_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(txt) + '\n')
-        scores['rytm_%s_%s_%s' % (lang1, lang2, data_type)] = float(rytm_correct)/rytm_total
-        print(float(rytm_correct)/rytm_total)
-  
 
+        if bleu_eval:
+            ref_path = self.params.mono_dataset[lang2][1].replace('pth','txt')
+            print (ref_path)
+
+            # evaluate BLEU score
+            bleus = eval_moses_bleu(ref_path, hyp_path)
+            logger.info("BLEU %s %s : %f" % (hyp_path, ref_path, bleus[0]))
+            logger.info("BLEU-1 : %f" % (bleus[1]))
+            logger.info("BLEU-2 : %f" % (bleus[2]))
+            logger.info("BLEU-3 : %f" % (bleus[3]))
+            logger.info("BLEU-4 : %f" % (bleus[4]))
+
+            # update scores
+            scores['bleu_%s_%s_%s' % (lang1, lang2, data_type)] = float(bleus[0])
+
+        logger.info("Rythem info: ")
+        logger.info(rytm_ntcount)
+        logger.info(rytm_total)
+        logger.info(float(rytm_correct)/(rytm_total))
+        scores['rytm_%s_%s_%s_trans' % (lang1, lang2, data_type)] = float(rytm_correct)/(rytm_total-rytm_ntcount)
 
 
 def _parse_multi_bleu_ret(bleu_str, return_all=False):
