@@ -57,10 +57,9 @@ class EvaluatorMT(object):
         batch_ids = batch_ids.cpu().detach().numpy()
         unk_index = self.params.unk_index
 
-        end_sent_2_toks = batch_ids[15,:]
-        end_sent_4_toks = batch_ids[31,:]
-
         if batch_ids.shape[0]>33:
+            end_sent_2_toks = batch_ids[15,:]
+            end_sent_4_toks = batch_ids[31,:]
             for idx in range(batch_ids.shape[1]):
                 end_sent_2_tok = [end_sent_2_toks[idx]]
                 end_sent_4_tok = [end_sent_4_toks[idx]]
@@ -106,14 +105,14 @@ class EvaluatorMT(object):
         else:
             i = None
         dataset.batch_size = 32
-        for batch in dataset.get_iterator(shuffle=False, group_by_size=False, n_sentences=self.params.eval_length)(): #TODO
+        for batch in dataset.get_iterator(shuffle=False, group_by_size=False, n_sentences=self.params.eval_length)(): #TODO: add para batch2
             yield batch if i is None else batch[i]
 
     def get_iterator(self, data_type, lang1, lang2):
         """
         Create a new iterator for a dataset.
         """
-        assert data_type in ['valid', 'test1', 'test2']
+        assert data_type in ['valid', 'test', 'test1', 'test2']
         if lang2 is None or lang1 == lang2:
             for batch in self.mono_iterator(data_type, lang1):
                 yield batch if lang2 is None else (batch, batch)
@@ -249,7 +248,7 @@ class EvaluatorMT(object):
 
 
 
-    def eval_para(self, lang1, lang2, data_type, scores, device):
+    def eval_para(self, lang1, lang2, data_type, scores, device, bleu_eval=True):
         """
         Evaluate lang1 -> lang2 perplexity and BLEU scores.
         """
@@ -282,7 +281,8 @@ class EvaluatorMT(object):
             # encode / decode / generate
             encoded = self.encoder(sent1, len1, lang1_id)
             decoded = self.decoder(encoded, sent2[:-1], lang2_id)
-            sent2_, len2_, _ = self.decoder.generate(encoded, lang2_id)
+            max_len = self.params.max_len[lang2_id]
+            sent2_, len2_, _ = self.decoder.generate(encoded, lang2_id, max_len=max_len)
 
             a, b = self.eval_rythm(sent2_)
             rytm_correct += a 
@@ -299,21 +299,31 @@ class EvaluatorMT(object):
         # hypothesis / reference paths
         hyp_name = 'hyp{0}.{1}-{2}.{3}.txt'.format(scores['epoch'], lang1, lang2, data_type)
         hyp_path = os.path.join(params.dump_path, hyp_name)
-        ref_path = params.ref_paths[(lang1, lang2, data_type)]
 
         # export sentences to hypothesis file / restore BPE segmentation
         with open(hyp_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(txt) + '\n')
-        restore_segmentation(hyp_path)
+        # restore_segmentation(hyp_path)
 
-        # evaluate BLEU score
-        bleu = eval_moses_bleu(ref_path, hyp_path)
-        logger.info("BLEU %s %s : %f" % (hyp_path, ref_path, bleu))
+        if bleu_eval:
+            ref_path = self.params.para_dataset[('pm', 'sw')][2].replace('pth','txt').replace('XX',lang2)
+            print (ref_path)
+
+            # evaluate BLEU score
+            bleus = eval_moses_bleu(ref_path, hyp_path)
+            logger.info("BLEU %s %s : %f" % (hyp_path, ref_path, bleus[0]))
+            logger.info("BLEU-1 : %f" % (bleus[1]))
+            logger.info("BLEU-2 : %f" % (bleus[2]))
+            logger.info("BLEU-3 : %f" % (bleus[3]))
+            logger.info("BLEU-4 : %f" % (bleus[4]))
+
+            # update scores
+            scores['bleu_%s_%s_%s' % (lang1, lang2, data_type)] = float(bleus[0])
 
         # update scores
         scores['ppl_%s_%s_%s' % (lang1, lang2, data_type)] = np.exp(xe_loss / count)
-        scores['bleu_%s_%s_%s' % (lang1, lang2, data_type)] = bleu
-        scores['rytm_%s_%s_%s_para' % (lang1, lang2, data_type)] = float(rytm_correct)/(rytm_total-rytm_ntcount)
+        if (rytm_total-rytm_ntcount) !=0:
+            scores['rytm_%s_%s_%s_para' % (lang1, lang2, data_type)] = float(rytm_correct)/(rytm_total-rytm_ntcount)
 
 
     def eval_back(self, lang1, lang2, lang3, data_type, scores, device):
@@ -410,7 +420,8 @@ class EvaluatorMT(object):
         logger.info(float(rytm_correct)/(rytm_total))
         scores['ppl_%s_%s_%s_%s' % (lang1, lang2, lang3, data_type)] = np.exp(xe_loss / count)
         scores['bleu_%s_%s_%s_%s' % (lang1, lang2, lang3, data_type)] = float(bleus[0])
-        scores['rytm_%s_%s_%s_%s_back' % (lang1, lang2, lang3, data_type)] = float(rytm_correct)/(rytm_total-rytm_ntcount)
+        if rytm_total-rytm_ntcount!=0:
+            scores['rytm_%s_%s_%s_%s_back' % (lang1, lang2, lang3, data_type)] = float(rytm_correct)/(rytm_total-rytm_ntcount)
 
     def run_all_evals(self, epoch):
         """
@@ -434,8 +445,9 @@ class EvaluatorMT(object):
             # before_gen = time.time() 
             lang2='sw'
             lang3='pm'
-            for data_type in ['test2']:
-                self.eval_transfer(lang2, lang3, data_type, scores, device, bleu_eval=True)
+            for data_type in ['test']:
+                self.eval_para(lang2, lang3, data_type, scores, device, bleu_eval=True)
+                # self.eval_transfer(lang2, lang3, data_type, scores, device, bleu_eval=True)
             # gen_time1 = time.time() - before_gen
             
             # before_gen = time.time()
@@ -473,11 +485,9 @@ class EvaluatorMT(object):
         # for perplexity
         loss_fn2 = nn.CrossEntropyLoss(weight=self.decoder.loss_fn[lang2_id].weight, size_average=False)
         n_words2 = self.params.n_words[lang2_id]
-        count = 0
         rytm_correct = 0
         rytm_ntcount = 0
         rytm_total = 0
-        xe_loss = 0
 
         for batch in self.get_iterator(data_type, lang1, None):
 
@@ -505,26 +515,27 @@ class EvaluatorMT(object):
         with open(hyp_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(txt) + '\n')
 
-        if bleu_eval:
-            ref_path = self.params.mono_dataset[lang2][1].replace('pth','txt')
-            print (ref_path)
+        # if bleu_eval:
+        #     ref_path = self.params.mono_dataset[lang2][1].replace('pth','txt') #potential bug here
+        #     print (ref_path)
 
-            # evaluate BLEU score
-            bleus = eval_moses_bleu(ref_path, hyp_path)
-            logger.info("BLEU %s %s : %f" % (hyp_path, ref_path, bleus[0]))
-            logger.info("BLEU-1 : %f" % (bleus[1]))
-            logger.info("BLEU-2 : %f" % (bleus[2]))
-            logger.info("BLEU-3 : %f" % (bleus[3]))
-            logger.info("BLEU-4 : %f" % (bleus[4]))
+        #     # evaluate BLEU score
+        #     bleus = eval_moses_bleu(ref_path, hyp_path)
+        #     logger.info("BLEU %s %s : %f" % (hyp_path, ref_path, bleus[0]))
+        #     logger.info("BLEU-1 : %f" % (bleus[1]))
+        #     logger.info("BLEU-2 : %f" % (bleus[2]))
+        #     logger.info("BLEU-3 : %f" % (bleus[3]))
+        #     logger.info("BLEU-4 : %f" % (bleus[4]))
 
-            # update scores
-            scores['bleu_%s_%s_%s' % (lang1, lang2, data_type)] = float(bleus[0])
+        #     # update scores
+        #     scores['bleu_%s_%s_%s' % (lang1, lang2, data_type)] = float(bleus[0])
 
         logger.info("Rythem info: ")
         logger.info(rytm_ntcount)
         logger.info(rytm_total)
         logger.info(float(rytm_correct)/(rytm_total))
-        scores['rytm_%s_%s_%s_trans' % (lang1, lang2, data_type)] = float(rytm_correct)/(rytm_total-rytm_ntcount)
+        if rytm_total-rytm_ntcount!=0:
+            scores['rytm_%s_%s_%s_trans' % (lang1, lang2, data_type)] = float(rytm_correct)/(rytm_total-rytm_ntcount)
 
 
 def _parse_multi_bleu_ret(bleu_str, return_all=False):

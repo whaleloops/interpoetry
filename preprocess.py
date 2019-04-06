@@ -25,22 +25,53 @@ random.seed(42)
 
 MAX_SENT_LEN=130
 PUNC = ['.','"',u'？',u'。',u'！',u'”']
+unk_index=0
 
 def zng(paragraph):
     for sent in re.findall(u'.+[.。?？!！\"”]', paragraph, flags=re.U):
         yield sent
 
-def split_train_valid(txt_path, train_prob, pron_dict, isjueju):
+def check_rythm(sents, tokenizer, length_type):
+    ntcount = 0
+    correct = 0
+    for sent in sents:
+        end_sent_2_tok = sent[2*length_type]
+        end_sent_4_tok = sent[4*length_type+2]
+        rythms_2 = tokenizer.ids_to_rytms[tokenizer.index(end_sent_2_tok, no_unk=False)]
+        rythms_4 = tokenizer.ids_to_rytms[tokenizer.index(end_sent_4_tok, no_unk=False)]
+        if (0 in rythms_2) or (0 in rythms_4) or (end_sent_2_tok==unk_index) or (end_sent_4_tok==unk_index):
+            ntcount += 1
+        else:
+            tmp=0
+            for a_rhyme in rythms_2:
+                if a_rhyme in rythms_4:
+                    tmp += 1
+                    break
+            # if tmp==0:
+            #     print('not rythm: %s, %s' % (str(rythms_2),str(rythms_4)))
+            #     print(end_sent_2_tok)
+            #     print(end_sent_4_tok)
+            #     print(self.dico['pm'].convert_ids_to_tokens(batch_ids[:,idx]))
+            correct+=tmp
+    print("Rythem info: ")
+    print(correct)
+    print(ntcount)
+    print(len(sents))
+    print(float(correct)/(len(sents)-ntcount))
+
+def split_train_valid(txt_path, train_prob, pron_dict, isjueju, length_type):
     train_input = []
     valid_input = []
+    original_total_count=0
     with io.open(txt_path, "r", encoding='utf8') as f:
         for line in f:
             s = line.rstrip()
             if len(s) != 0:
+                original_total_count += 1
                 if isjueju:
-                    if len(s)>31:
-                        end_sent_2_tok = s[14]
-                        end_sent_4_tok = s[30]
+                    if len(s)>4*length_type+3:
+                        end_sent_2_tok = s[2*length_type]
+                        end_sent_4_tok = s[4*length_type+2]
                         if pron_dict.co_rhyme(end_sent_2_tok, end_sent_4_tok):
                             if random.random() < train_prob:
                                 train_input.append(s)
@@ -53,10 +84,11 @@ def split_train_valid(txt_path, train_prob, pron_dict, isjueju):
                         valid_input.append(s)
     print ("num train data: %d"% len(train_input))
     print ("num valid data: %d"% len(valid_input))
+    print ("num total original data: %d"% original_total_count)
     return train_input, valid_input
 
 
-def get_data(input_sents, tokenizer):
+def get_data(input_sents, tokenizer, issanwen):
     positions = []
     sentences = []
     sentences_len = []
@@ -67,8 +99,11 @@ def get_data(input_sents, tokenizer):
     long_sent_count = 0
     for ind in range(len(input_sents)):
         sent=input_sents[ind]
-        # realmax_len=MAX_SENT_LEN
-        realmax_len = np.random.normal(loc=99.0, scale=10.0, size=None)
+        if issanwen:
+            realmax_len = np.random.normal(loc=99.0, scale=10.0, size=None)
+        else:
+            realmax_len=MAX_SENT_LEN
+        
         if realmax_len > MAX_SENT_LEN:
             realmax_len = MAX_SENT_LEN 
         realmax_len = int(realmax_len)
@@ -128,6 +163,7 @@ def get_data(input_sents, tokenizer):
     print(np.std(sentences_len))
     return data
 
+# python preprocess.py data/vocab.txt data/para/jueju5_out abc juejue 5
 
 if __name__ == '__main__':
 
@@ -137,13 +173,25 @@ if __name__ == '__main__':
     txt_path = sys.argv[2]
     bin_path_tr = sys.argv[2] + '.tr.pth'
     bin_path_vl = sys.argv[2] + '.vl.pth'
-    isjueju = sys.argv[3]
+    issanwen = sys.argv[3]
+    isjueju = sys.argv[4]
+    length_type = sys.argv[5]
+    length_type = int(length_type)
+    assert length_type==5 or length_type==7
+    if issanwen.startswith('sanw'):
+        issanwen = True
+    else:
+        issanwen = False
     if isjueju.startswith('jue'):
         isjueju = True
     else:
         isjueju = False
+    print ("is sanwen?: ")
+    print (issanwen)
     print ("is jueju?: ")
     print (isjueju)
+    print ("length_type: ")
+    print (length_type)
     vocab_rytm_file = 'data/vocab_rytm.json'
     assert os.path.isfile(voc_path)
     assert os.path.isfile(txt_path)
@@ -181,11 +229,13 @@ if __name__ == '__main__':
     
     if txt_path.strip()[-3:]=='txt':
         # split train_valid
-        train_sents, valid_sents = split_train_valid(txt_path, 1.1, pron_dict, isjueju)
+        train_sents, valid_sents = split_train_valid(txt_path, 1.1, pron_dict, isjueju, length_type)
         bin_path_tr = txt_path.strip()[:-4]
         bin_path_tr += '.pth'
+        # eval rythm:
+        check_rythm(train_sents, tokenizer, length_type)
         # process data
-        data = get_data(train_sents, tokenizer)
+        data = get_data(train_sents, tokenizer, issanwen)
         # saveing data
         print("Saving the data to %s ..." % bin_path_tr)
         torch.save(data, bin_path_tr)
@@ -215,7 +265,7 @@ if __name__ == '__main__':
     else:
         # split train_valid
         print("Spliting train valid from input...")
-        train_sents, valid_sents = split_train_valid(txt_path, 0.75, pron_dict, isjueju)
+        train_sents, valid_sents = split_train_valid(txt_path, 0.75, pron_dict, isjueju, length_type)
         # save valid
         with io.open(txt_path+ '.vl.txt', "w", encoding='utf8') as f:
             for line in valid_sents:
@@ -224,9 +274,13 @@ if __name__ == '__main__':
             for line in train_sents:
                 f.write(line+'\n') 
 
+        # eval rythm:
+        check_rythm(train_sents, tokenizer, length_type)
+        check_rythm(valid_sents, tokenizer, length_type)
+
         # process data
         print("Processing training data...")
-        data = get_data(train_sents, tokenizer)
+        data = get_data(train_sents, tokenizer, issanwen)
         # saveing data
         print("Saving the data to %s ..." % bin_path_tr)
         torch.save(data, bin_path_tr)
@@ -257,7 +311,7 @@ if __name__ == '__main__':
 
         # process data
         print("Processing valid data...")
-        data = get_data(valid_sents, tokenizer)
+        data = get_data(valid_sents, tokenizer, issanwen)
         # saveing data
         print("Saving the data to %s ..." % bin_path_vl)
         torch.save(data, bin_path_vl)

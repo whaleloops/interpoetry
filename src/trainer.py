@@ -18,7 +18,7 @@ from .utils import get_optimizer, parse_lambda_config, update_lambdas
 from .model import build_mt_model
 from .multiprocessing_event_loop import MultiprocessingEventLoop
 from .test import test_sharing
-
+from .rl_tools import *
 
 logger = getLogger()
 
@@ -116,6 +116,9 @@ class TrainerMT(MultiprocessingEventLoop):
             self.stats['xe_costs_bt_%s_%s' % (lang1, lang2)] = []
         for lang1, lang2, lang3 in params.pivo_directions:
             self.stats['xe_costs_%s_%s_%s' % (lang1, lang2, lang3)] = []
+            self.stats['ml_costs_%s_%s_%s' % (lang1, lang2, lang3)] = []
+            self.stats['rl_costs_ap_%s_%s_%s' % (lang1, lang2, lang3)] = []
+            self.stats['rl_costs_ar_%s_%s_%s' % (lang1, lang2, lang3)] = []
         for lang in params.langs:
             self.stats['lme_costs_%s' % lang] = []
             self.stats['lmd_costs_%s' % lang] = []
@@ -656,7 +659,7 @@ class TrainerMT(MultiprocessingEventLoop):
 
         return (rank, results)
 
-    def otf_bt(self, batch, lambda_xe, backprop_temperature):
+    def otf_bt_rl(self, batch, lambda_xe, backprop_temperature, reward_gamma_ap, reward_gamma_ar, reward_type_ar, reward_thresh_ar):
         """
         On the fly back-translation.
         """
@@ -683,16 +686,101 @@ class TrainerMT(MultiprocessingEventLoop):
         sent1, sent2, sent3 = sent1.to(device), sent2.to(device), sent3.to(device)
         bs = sent1.size(1)
 
-        # logger.info('otf_bt') #TODO
-        # logger.info(lang1)
-        # logger.info(lang2)
-        # logger.info(lang3)
-        # logger.info(sent1)
-        # logger.info(sent1.shape)
-        # logger.info(sent2)
-        # logger.info(sent2.shape)
-        # logger.info(sent3)
-        # logger.info(sent3.shape)
+        if backprop_temperature == -1:
+            # lang2 -> lang3
+            encoded = self.encoder(sent2, len2, lang_id=lang2_id)
+        else:
+            # lang1 -> lang2
+            encoded = self.encoder(sent1, len1, lang_id=lang1_id)
+            scores = self.decoder(encoded, sent2[:-1], lang_id=lang2_id)
+            assert scores.size() == (len2.max() - 1, bs, n_words2)
+
+            # lang2 -> lang3
+            bos = torch.cuda.FloatTensor(1, bs, n_words2).zero_()
+            bos[0, :, params.bos_index[lang2_id]] = 1
+            sent2_input = torch.cat([bos, F.softmax(scores / backprop_temperature, -1)], 0)
+            # logger.info(sent2[0:2]) #TODO
+            # logger.info(sent2.shape)
+            # logger.info(sent2_input[0:2])
+            # logger.info(sent2_input.shape)
+            encoded = self.encoder(sent2, len2, lang_id=lang2_id, embed_input=sent2_input)
+        # get scores and samples
+        scores = self.decoder(encoded, sent3[:-1], lang_id=lang3_id)
+
+        # only ml loss
+        ml_loss = loss_fn(scores.view(-1, n_words3), sent3[1:].view(-1))
+        self.stats['ml_costs_%s_%s_%s' % direction].append(ml_loss.item())
+        final_loss = ml_loss
+
+        if lang1 == 'sw' and lang2 == 'pm' and lang3 == 'sw':
+            samples = torch.from_numpy(get_samples(scores)).to(device)
+            bases = torch.from_numpy(get_bases(scores)).to(device)
+            # rl loss anti plagiarism
+            rl_loss_ap_unweighted = loss_fn_no_mean(scores.view(-1, n_words3), samples.view(-1))
+            weights_ap = torch.Tensor([0]).to(device)
+            if reward_gamma_ap > 0:
+                weights_ap = (get_weights_ap(bases, samples, sent2[1:]) * torch.Tensor([reward_gamma_ap])).to(device)
+            rl_loss_ap = torch.mean(rl_loss_ap_unweighted * weights_ap)
+            self.stats['rl_costs_ap_%s_%s_%s' % direction].append(rl_loss_ap.item())
+            final_loss += rl_loss_ap
+            # rl loss anti repetition
+            rl_loss_ar_unweighted = loss_fn_no_mean(scores.view(-1, n_words3), bases.view(-1))
+            weights_ar = torch.Tensor([0]).to(device)
+            if reward_type_ar != 'none' and reward_gamma_ar > 0:
+                weights_ar = (get_weights_ar(bases, reward_thresh_ar, reward_type_ar) * torch.Tensor([reward_gamma_ar])).to(device)
+            rl_loss_ar = torch.mean(rl_loss_ar_unweighted * weights_ar)
+            self.stats['rl_costs_ar_%s_%s_%s' % direction].append(rl_loss_ar.item())
+            final_loss += rl_loss_ar
+
+        assert lambda_xe > 0
+        loss = lambda_xe * final_loss
+
+        # check NaN
+        if (loss != loss).data.any():
+            logger.error("NaN detected")
+            exit()
+
+        # optimizer
+        assert params.otf_update_enc or params.otf_update_dec
+        to_update = []
+        if params.otf_update_enc:
+            to_update.append('enc')
+        if params.otf_update_dec:
+            to_update.append('dec')
+        self.zero_grad(to_update)
+        loss.backward()
+        self.update_params(to_update)
+
+        # number of processed sentences / words
+        self.stats['processed_s'] += len3.size(0)
+        self.stats['processed_w'] += len3.sum()
+
+    def otf_bt(self, batch, lambda_xe, backprop_temperature):
+        """
+        On the fly back-translation with rl.
+        """
+        params = self.params
+        lang1, sent1, len1 = batch['lang1'], batch['sent1'], batch['len1']
+        lang2, sent2, len2 = batch['lang2'], batch['sent2'], batch['len2']
+        lang3, sent3, len3 = batch['lang3'], batch['sent3'], batch['len3']
+        if lambda_xe == 0:
+            logger.warning("Unused generated CPU batch for direction %s-%s-%s!" % (lang1, lang2, lang3))
+            return
+        lang1_id = params.lang2id[lang1]
+        lang2_id = params.lang2id[lang2]
+        lang3_id = params.lang2id[lang3]
+        direction = (lang1, lang2, lang3)
+        assert direction in params.pivo_directions
+        loss_fn = self.decoder.loss_fn[lang3_id]
+        n_words2 = params.n_words[lang2_id]
+        n_words3 = params.n_words[lang3_id]
+        self.encoder.train()
+        self.decoder.train()
+
+        # prepare batch
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        sent1, sent2, sent3 = sent1.to(device), sent2.to(device), sent3.to(device)
+        bs = sent1.size(1)
 
         if backprop_temperature == -1:
             # lang2 -> lang3
@@ -707,14 +795,19 @@ class TrainerMT(MultiprocessingEventLoop):
             bos = torch.cuda.FloatTensor(1, bs, n_words2).zero_()
             bos[0, :, params.bos_index[lang2_id]] = 1
             sent2_input = torch.cat([bos, F.softmax(scores / backprop_temperature, -1)], 0)
-            encoded = self.encoder(sent2_input, len2, lang_id=lang2_id)
+            # logger.info(sent2[0:2]) #TODO
+            # logger.info(sent2.shape)
+            # logger.info(sent2_input[0:2])
+            # logger.info(sent2_input.shape)
+            encoded = self.encoder(sent2, len2, lang_id=lang2_id, embed_input=sent2_input)
 
         # cross-entropy scores / loss
         scores = self.decoder(encoded, sent3[:-1], lang_id=lang3_id)
-        xe_loss = loss_fn(scores.view(-1, n_words3), sent3[1:].view(-1))
-        self.stats['xe_costs_%s_%s_%s' % direction].append(xe_loss.item())
+        # calculate ml loss
+        ml_loss = loss_fn(scores.view(-1, n_words3), sent3[1:].view(-1))
+        self.stats['ml_costs_%s_%s_%s' % direction].append(ml_loss.item())
         assert lambda_xe > 0
-        loss = lambda_xe * xe_loss
+        loss = lambda_xe * ml_loss
 
         # check NaN
         if (loss != loss).data.any():
@@ -764,11 +857,17 @@ class TrainerMT(MultiprocessingEventLoop):
                 mean_loss.append(('XE-BT-%s-%s' % (lang1, lang2), 'xe_costs_bt_%s_%s' % (lang1, lang2)))
             for lang1, lang2, lang3 in self.params.pivo_directions:
                 mean_loss.append(('XE-%s-%s-%s' % (lang1, lang2, lang3), 'xe_costs_%s_%s_%s' % (lang1, lang2, lang3)))
+                mean_loss.append(('ML_COSTS_%s' % lang1, 'ml_costs_%s_%s_%s' % (lang1, lang2, lang3)))
+                if len(self.stats['rl_costs_ap_%s_%s_%s' % (lang1, lang2, lang3)])!=0:
+                    mean_loss.append(('RL_COSTS_AP_%s' % lang1, 'rl_costs_ap_%s_%s_%s' % (lang1, lang2, lang3)))
+                if len(self.stats['rl_costs_ar_%s_%s_%s' % (lang1, lang2, lang3)])!=0:
+                    mean_loss.append(('RL_COSTS_AR_%s' % lang1, 'rl_costs_ar_%s_%s_%s' % (lang1, lang2, lang3)))
             for lang in self.params.langs:
                 mean_loss.append(('LME-%s' % lang, 'lme_costs_%s' % lang))
                 mean_loss.append(('LMD-%s' % lang, 'lmd_costs_%s' % lang))
                 mean_loss.append(('LMER-%s' % lang, 'lmer_costs_%s' % lang))
                 mean_loss.append(('ENC-L2-%s' % lang, 'enc_norms_%s' % lang))
+
 
             s_iter = "%7i - " % self.n_iter
             s_stat = ' || '.join(['{}: {:7.4f}'.format(k, np.mean(self.stats[l]))

@@ -37,6 +37,7 @@ class TransformerEncoder(nn.Module):
         self.n_langs = args.n_langs
         self.n_words = args.n_words
         embed_dim = args.encoder_embed_dim
+        self.embed_dim = embed_dim
         if args.share_lang_emb:
             assert len(set(args.n_words)) == 1
             logger.info("Sharing encoder input embeddings")
@@ -81,16 +82,24 @@ class TransformerEncoder(nn.Module):
                 else:
                     self.layers[k].append(TransformerEncoderLayer(args))
 
-    def forward(self, src_tokens, src_lengths, lang_id):
+    def forward(self, src_tokens, src_lengths, lang_id, embed_input='None'):
         assert type(lang_id) is int
 
         embed_tokens = self.embeddings[lang_id]
 
         # embed tokens and positions
-        x = self.embed_scale * embed_tokens(src_tokens)
+        slen, bs = src_tokens.size(0), src_tokens.size(1)
+        if type(embed_input)==str:
+            x = self.embed_scale * embed_tokens(src_tokens)
+        else:
+            assert embed_input.dim() == 3 and embed_input.size(2) == self.n_words[lang_id]
+            x = self.embed_scale * embed_input.view(slen * bs, -1).mm(embed_tokens.weight).view(slen, bs, self.embed_dim)
+            # x = self.embed_scale * embed_input.view(slen * bs, -1)[:,0:768].view(slen, bs, self.embed_dim)
         x = x.detach() if self.freeze_enc_emb else x
         x += self.embed_positions(src_tokens)
-        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = F.dropout(x, p=self.dropout, training=self.training)      
+        # logger.info(src_tokens.shape) #TODO
+        # logger.info(x.shape)
 
         # compute padding mask
         encoder_padding_mask = src_tokens.t().eq(self.padding_idx)

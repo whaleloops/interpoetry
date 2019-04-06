@@ -233,6 +233,19 @@ def get_parser():
                         help="Length penalty: <1.0 favors shorter, >1.0 favors longer sentences")
     parser.add_argument("--eval_length", type=int, default=-1,
                         help="eval length, -1 mean every valid and test data")
+    # rl
+    parser.add_argument("--use_rl", type=bool, default=False,
+                        help="whether to use rl loss")
+    parser.add_argument("--rl_start_epoch", type=int, default=6,
+                        help="rl start epoch")
+    parser.add_argument("--reward_gamma_ap", type=float, default=0.0,
+                        help="weight of anti-plagiarism rl loss")
+    parser.add_argument("--reward_gamma_ar", type=float, default=0.0,
+                        help="weight of anti-repetition rl loss")
+    parser.add_argument("--reward_type_ar", type=str, default='punish',
+                        help="weight of anti-repetition rl loss (encourage or punish)")
+    parser.add_argument("--reward_thresh_ar", type=float, default=0.5,
+                        help="threshold for anti-repetition rl reward")
     return parser
 
 
@@ -284,7 +297,7 @@ def main(params):
     assert params.epoch_size > 0
 
     # start training
-    for _ in range(trainer.epoch, params.max_epoch):
+    for epoch in range(trainer.epoch, params.max_epoch):
 
         logger.info("====================== Starting epoch %i ... ======================" % trainer.epoch)
 
@@ -337,21 +350,29 @@ def main(params):
                 # training
                 for batch in batches:
                     lang1, lang2, lang3 = batch['lang1'], batch['lang2'], batch['lang3']
-                    # 2-lang back-translation - autoencoding
-                    if lang1 != lang2 == lang3:
-                        trainer.otf_bt(batch, params.lambda_xe_otfa, params.otf_backprop_temperature)
-                    # 2-lang back-translation - parallel data
-                    elif lang1 == lang3 != lang2:
+                    if params.reward_gamma_ap != 0 or params.reward_type_ar != 'None':
+                        # 2-lang back-translation - autoencoding
+                        if lang1 != lang2 == lang3:
+                            trainer.otf_bt(batch, params.lambda_xe_otfa, params.otf_backprop_temperature)
+                        # 2-lang back-translation - parallel data
+                        elif lang1 == lang3 != lang2:
+                            if params.use_rl and epoch >= params.rl_start_epoch:
+                                trainer.otf_bt_rl(batch, params.lambda_xe_otfd, params.otf_backprop_temperature,
+                                                  params.reward_gamma_ap,
+                                                  params.reward_gamma_ar,
+                                                  params.reward_type_ar,
+                                                  params.reward_thresh_ar)
+                            else:
+                                trainer.otf_bt(batch, params.lambda_xe_otfd, params.otf_backprop_temperature)
+                        # 3-lang back-translation - parallel data
+                        elif lang1 != lang2 and lang2 != lang3 and lang1 != lang3:
+                            trainer.otf_bt(batch, params.lambda_xe_otfd, params.otf_backprop_temperature)
+                    else:
                         trainer.otf_bt(batch, params.lambda_xe_otfd, params.otf_backprop_temperature)
-                    # 3-lang back-translation - parallel data
-                    elif lang1 != lang2 and lang2 != lang3 and lang1 != lang3:
-                        trainer.otf_bt(batch, params.lambda_xe_otfd, params.otf_backprop_temperature)
-
             trainer.iter()
 
         # end of epoch
         logger.info("====================== End of epoch %i ======================" % trainer.epoch)
-        
 
         # evaluate discriminator / perplexity / BLEU 
         # scores=0
