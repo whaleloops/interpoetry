@@ -13,7 +13,9 @@ import sys
 import copy
 import re, json, collections
 import numpy as np
+from tqdm import tqdm
 
+from src.abs_tools import *
 from src.data.tokenization import BertTokenizer
 from src.data.pron_dict import PronDict
 from src.data.pron_dict import get_rhyme
@@ -23,7 +25,7 @@ import torch
 import random
 random.seed(42)
 
-MAX_SENT_LEN=130
+MAX_SENT_LEN=75 #TODO: 130
 PUNC = ['.','"',u'？',u'。',u'！',u'”']
 unk_index=0
 
@@ -53,11 +55,11 @@ def check_rythm(sents, tokenizer, length_type):
             #     print(end_sent_4_tok)
             #     print(self.dico['pm'].convert_ids_to_tokens(batch_ids[:,idx]))
             correct+=tmp
-    print("Rythem info: ")
-    print(correct)
-    print(ntcount)
-    print(len(sents))
-    print(float(correct)/(len(sents)-ntcount))
+    logger.info("Rythem info: ")
+    logger.info(correct)
+    logger.info(ntcount)
+    logger.info(len(sents))
+    logger.info(float(correct)/(len(sents)-ntcount))
 
 def split_train_valid(txt_path, train_prob, pron_dict, isjueju, length_type):
     train_input = []
@@ -82,25 +84,31 @@ def split_train_valid(txt_path, train_prob, pron_dict, isjueju, length_type):
                         train_input.append(s)
                     else:
                         valid_input.append(s)
-    print ("num train data: %d"% len(train_input))
-    print ("num valid data: %d"% len(valid_input))
-    print ("num total original data: %d"% original_total_count)
+    logger.info ("num train data: %d"% len(train_input))
+    logger.info ("num valid data: %d"% len(valid_input))
+    logger.info ("num total original data: %d"% original_total_count)
     return train_input, valid_input
 
 
 def get_data(input_sents, tokenizer, issanwen):
+    sent_str = []
     positions = []
     sentences = []
     sentences_len = []
+    sent_str_abs = []
+    positions_abs = []
+    sentences_abs = []
+    sentences_abs_len = []
     length_in_count = np.zeros(int(MAX_SENT_LEN/10)+1)
     unk_words = {}
     line_count=0
     too_long_sent_count = 0
     long_sent_count = 0
-    for ind in range(len(input_sents)):
+    # for ind in range(len(input_sents)):
+    for ind in tqdm(range(len(input_sents)), mininterval=60.0*20):
         sent=input_sents[ind]
         if issanwen:
-            realmax_len = np.random.normal(loc=99.0, scale=10.0, size=None)
+            realmax_len = np.random.normal(loc=69.0, scale=10.0, size=None) #TODO: 99
         else:
             realmax_len=MAX_SENT_LEN
         
@@ -122,7 +130,7 @@ def get_data(input_sents, tokenizer, issanwen):
         token_s = tokenizer.tokenize(sent)
         # if len(token_s) == 0:
         #     print("Empty sentence in line %i." % line_count)
-        if len(token_s) > 10:
+        if len(token_s) > 31: #TODO: 21
             # index sentence words
             indexed = tokenizer.convert_tokens_to_ids(token_s)
             unk_idxs = [i for i, e in enumerate(indexed) if e == 100]
@@ -130,39 +138,61 @@ def get_data(input_sents, tokenizer, issanwen):
                 w = sent[unk_idx] 
                 unk_words[w] = unk_words.get(w, 0) + 1
             # add sentence
+            sent_str.append(sent)
             positions.append([len(sentences), len(sentences) + len(indexed)])
             sentences_len.append(len(indexed))
             sentences.extend(indexed)
             sentences.append(-1)
+
+            if issanwen:
+                summary = shorten_sents(sent, min_len=31, max_len=45)
+                token_s_abs = tokenizer.tokenize(summary)
+                indexed_abs = tokenizer.convert_tokens_to_ids(token_s_abs)
+                sent_str_abs.append(summary)
+                positions_abs.append([len(sentences_abs), len(sentences_abs) + len(indexed_abs)])
+                sentences_abs_len.append(len(indexed_abs))
+                sentences_abs.extend(indexed_abs)
+                sentences_abs.append(-1)
+
             line_count+=1
-            if len(token_s) > 130:
+            if len(token_s) > MAX_SENT_LEN:
                 length_in_count[-1] += 1
             else:
                 length_in_count[int(len(token_s)/10)] += 1
         # else:
         #     print("Short sentence in line %i. <=10" % line_count)
 
+
     # tensorize data
     positions = torch.LongTensor(positions)
     sentences = torch.LongTensor(sentences)
+    positions_abs = torch.LongTensor(positions_abs)
+    sentences_abs = torch.LongTensor(sentences_abs)
     data = {
         'dico': tokenizer,
         'positions': positions,
         'sentences': sentences,
+        'positions_abs': positions_abs,
+        'sentences_abs': sentences_abs,
         'unk_words': unk_words,
     }
-    print('long sentence count:')
-    print(long_sent_count)
-    print('long sentence that can not convert count:')
-    print(too_long_sent_count)
+    logger.info('long sentence count:')
+    logger.info(long_sent_count)
+    logger.info('long sentence that can not convert count:')
+    logger.info(too_long_sent_count)
     length_in_count = length_in_count/np.sum(length_in_count)
-    print('sentence length bin count:')
-    print(length_in_count)
-    print('sentence length mean and std:')
-    print(np.mean(sentences_len))
-    print(np.std(sentences_len))
-    return data
+    logger.info('sentence length bin count:')
+    logger.info(length_in_count)
+    logger.info('sentence length mean and std:')
+    logger.info(np.mean(sentences_len))
+    logger.info(np.std(sentences_len))
+    if issanwen:
+        logger.info('abstract sentence length mean and std:')
+        logger.info(np.mean(sentences_abs_len))
+        logger.info(np.std(sentences_abs_len))
+    return data, sent_str, sent_str_abs
 
+# python preprocess.py data/vocab.txt data/sanwen/sanwen sanwen abc 5
 # python preprocess.py data/vocab.txt data/para/jueju5_out abc juejue 5
 
 if __name__ == '__main__':
@@ -186,12 +216,12 @@ if __name__ == '__main__':
         isjueju = True
     else:
         isjueju = False
-    print ("is sanwen?: ")
-    print (issanwen)
-    print ("is jueju?: ")
-    print (isjueju)
-    print ("length_type: ")
-    print (length_type)
+    logger.info ("is sanwen?: ")
+    logger.info (issanwen)
+    logger.info ("is jueju?: ")
+    logger.info (isjueju)
+    logger.info ("length_type: ")
+    logger.info (length_type)
     vocab_rytm_file = 'data/vocab_rytm.json'
     assert os.path.isfile(voc_path)
     assert os.path.isfile(txt_path)
@@ -233,11 +263,12 @@ if __name__ == '__main__':
         bin_path_tr = txt_path.strip()[:-4]
         bin_path_tr += '.pth'
         # eval rythm:
-        check_rythm(train_sents, tokenizer, length_type)
+        if not issanwen:
+            check_rythm(train_sents, tokenizer, length_type)
         # process data
-        data = get_data(train_sents, tokenizer, issanwen)
+        data, sent, sent_abs = get_data(train_sents, tokenizer, issanwen)
         # saveing data
-        print("Saving the data to %s ..." % bin_path_tr)
+        logger.info("Saving the data to %s ..." % bin_path_tr)
         torch.save(data, bin_path_tr)
         # display results
         logger.info("%i words (%i unique) in %i sentences." % (
@@ -264,25 +295,27 @@ if __name__ == '__main__':
             logger.info("0 unknown word.")
     else:
         # split train_valid
-        print("Spliting train valid from input...")
-        train_sents, valid_sents = split_train_valid(txt_path, 0.75, pron_dict, isjueju, length_type)
-        # save valid
-        with io.open(txt_path+ '.vl.txt', "w", encoding='utf8') as f:
-            for line in valid_sents:
-                f.write(line+'\n') 
-        with io.open(txt_path+ '.tr.txt', "w", encoding='utf8') as f:
-            for line in train_sents:
-                f.write(line+'\n') 
+        logger.info("Spliting train valid from input...")
+        train_sents, valid_sents = split_train_valid(txt_path, 0.85, pron_dict, isjueju, length_type)
 
         # eval rythm:
-        check_rythm(train_sents, tokenizer, length_type)
-        check_rythm(valid_sents, tokenizer, length_type)
+        if not issanwen:
+            check_rythm(train_sents, tokenizer, length_type)
+            check_rythm(valid_sents, tokenizer, length_type)
 
         # process data
-        print("Processing training data...")
-        data = get_data(train_sents, tokenizer, issanwen)
+        logger.info("Processing training data...")
+        data, sent, sent_abs = get_data(train_sents, tokenizer, issanwen)
         # saveing data
-        print("Saving the data to %s ..." % bin_path_tr)
+        logger.info("Saving the sent to %s ..." % txt_path+ '.tr.txt')
+        with io.open(txt_path+ '.tr.txt', "w", encoding='utf8') as f:
+            for line in sent:
+                f.write(line+'\n') 
+        with io.open(txt_path+ '.tr.summary.txt', "w", encoding='utf8') as f:
+            for line in sent_abs:
+                f.write(line+'\n') 
+
+        logger.info("Saving the data to %s ..." % bin_path_tr)
         torch.save(data, bin_path_tr)
         # display results
         logger.info("%i words (%i unique) in %i sentences." % (
@@ -310,10 +343,17 @@ if __name__ == '__main__':
 
 
         # process data
-        print("Processing valid data...")
-        data = get_data(valid_sents, tokenizer, issanwen)
+        logger.info("Processing valid data...")
+        data, sent, sent_abs = get_data(valid_sents, tokenizer, issanwen)
         # saveing data
-        print("Saving the data to %s ..." % bin_path_vl)
+        logger.info("Saving the sent to %s ..." % txt_path+ '.vl.txt')
+        with io.open(txt_path+ '.vl.txt', "w", encoding='utf8') as f:
+            for line in sent:
+                f.write(line+'\n') 
+        with io.open(txt_path+ '.vl.summary.txt', "w", encoding='utf8') as f:
+            for line in sent_abs:
+                f.write(line+'\n') 
+        logger.info("Saving the data to %s ..." % bin_path_vl)
         torch.save(data, bin_path_vl)
         # display results
         logger.info("%i words (%i unique) in %i sentences." % (

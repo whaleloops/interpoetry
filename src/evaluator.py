@@ -183,7 +183,7 @@ class EvaluatorMT(object):
 
         for batch in self.get_iterator(data_type, lang, None):
             # batch
-            (x_gold, l_gold) = batch
+            (x_gold, l_gold), (sent_abs, len_abs) = batch
             x_blank, l_blank = trainer.word_blank(x_gold, l_gold, lang_id)
             # if torch.cuda.is_available():
             #     words = words.cuda()
@@ -275,7 +275,7 @@ class EvaluatorMT(object):
         for batch in self.get_iterator(data_type, lang1, lang2):
 
             # batch
-            (sent1, len1), (sent2, len2) = batch
+            (sent1, len1), (sent_abs, len_abs), (sent2, len2) = batch
             sent1, sent2 = sent1.to(device), sent2.to(device)
 
             # encode / decode / generate
@@ -355,7 +355,7 @@ class EvaluatorMT(object):
         for batch in self.get_iterator(data_type, lang1, lang3):
 
             # batch
-            (sent1, len1), (sent3, len3) = batch
+            ((sent1, len1), (sent_abs1, len_abs1)), ((sent3, len3), (sent_abs3, len_abs3)) = batch
             sent1, sent3 = sent1.to(device), sent3.to(device)
 
             # encode / generate lang1 -> lang2
@@ -492,7 +492,7 @@ class EvaluatorMT(object):
         for batch in self.get_iterator(data_type, lang1, None):
 
             # batch
-            (sent1, len1) = batch
+            (sent1, len1), (sent_abs, len_abs) = batch
             sent1 = sent1.to(device)
 
             # encode / decode / generate

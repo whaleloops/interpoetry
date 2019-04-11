@@ -354,7 +354,7 @@ class TrainerMT(MultiprocessingEventLoop):
         # batch / encode
         encoded = []
         for lang_id, lang in enumerate(self.params.langs):
-            sent1, len1 = self.get_batch('dis', lang, None)
+            (sent1, len1), (sent_abs, len_abs) = self.get_batch('dis', lang, None)
             with torch.no_grad():
                 encoded.append(self.encoder(sent1.cuda(), len1, lang_id))
 
@@ -392,7 +392,7 @@ class TrainerMT(MultiprocessingEventLoop):
         n_words = self.params.n_words[lang_id]
 
         # batch
-        sent1, len1 = self.get_batch('lm', lang, None)
+        (sent1, len1), (sent_abs, len_abs) = self.get_batch('lm', lang, None)
         sent1 = sent1.cuda()
         if self.lm.use_lm_enc_rev:
             sent1_rev = reverse_sentences(sent1, len1)
@@ -457,12 +457,12 @@ class TrainerMT(MultiprocessingEventLoop):
 
         # batch
         if back:
-            (sent1, len1), (sent2, len2) = self.get_batch('encdec', lang1, lang2, back=True)
+            (sent1, len1), (sent_abs, len_abs), (sent2, len2) = self.get_batch('encdec', lang1, lang2, back=True)
         elif lang1 == lang2:
-            sent1, len1 = self.get_batch('encdec', lang1, None)
+            (sent1, len1), (sent_abs, len_abs) = self.get_batch('encdec', lang1, None)
             sent2, len2 = sent1, len1
         else:
-            (sent1, len1), (sent2, len2) = self.get_batch('encdec', lang1, lang2)
+            (sent1, len1), (sent_abs, len_abs), (sent2, len2) = self.get_batch('encdec', lang1, lang2)
 
         # prepare the encoder / decoder inputs
         if lang1 == lang2:
@@ -596,17 +596,17 @@ class TrainerMT(MultiprocessingEventLoop):
             # 2-lang back-translation - autoencoding
             if lang1 != lang2 == lang3:
                 if self.params.lambda_xe_otfa > 0:
-                    (sent1, len1), (sent3, len3) = self.get_batch('otf', lang1, lang3)
+                    (sent1, len1), (sent_abs, len_abs), (sent3, len3) = self.get_batch('otf', lang1, lang3)
             # 2-lang back-translation - parallel data
             elif lang1 == lang3 != lang2:
                 if self.params.lambda_xe_otfd > 0:
-                    sent1, len1 = self.get_batch('otf', lang1, None)
+                    (sent1, len1), (sent_abs, len_abs) = self.get_batch('otf', lang1, None)
                     sent3, len3 = sent1, len1
             # 3-lang back-translation - parallel data
             else:
                 assert lang1 != lang2 and lang2 != lang3 and lang1 != lang3
                 if self.params.lambda_xe_otfd > 0:
-                    (sent1, len1), (sent3, len3) = self.get_batch('otf', lang1, lang3)
+                    (sent1, len1), (sent_abs, len_abs), (sent3, len3) = self.get_batch('otf', lang1, lang3)
 
             batches.append({
                 'direction': direction,

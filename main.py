@@ -246,6 +246,11 @@ def get_parser():
                         help="weight of anti-repetition rl loss (encourage or punish)")
     parser.add_argument("--reward_thresh_ar", type=float, default=0.5,
                         help="threshold for anti-repetition rl reward")
+
+    # summary
+    parser.add_argument("--use_summary", type=bool, default=False,
+                        help="whether to use summary to shrink input sanwen")
+
     return parser
 
 
