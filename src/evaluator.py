@@ -280,7 +280,7 @@ class EvaluatorMT(object):
 
             # encode / decode / generate
             encoded = self.encoder(sent1, len1, lang1_id)
-            decoded = self.decoder(encoded, sent2[:-1], lang2_id)
+            decoded = self.decoder(encoded, sent2[:-1], lang_id=lang2_id, use_lens=params.use_lens, lens=len2.to(device))
             max_len = self.params.max_len[lang2_id]
             sent2_, len2_, _ = self.decoder.generate(encoded, lang2_id, max_len=max_len)
 
@@ -366,7 +366,7 @@ class EvaluatorMT(object):
 
             # encode / decode / generate lang2 -> lang3
             encoded = self.encoder(sent2_.to(device), len2_, lang2_id)
-            decoded = self.decoder(encoded, sent3[:-1], lang3_id)
+            decoded = self.decoder(encoded, sent3[:-1], lang_id=lang3_id, use_lens=params.use_lens, lens=len3.to(device))
             max_len = self.params.max_len[lang3_id]
             sent3_, len3_, _ = self.decoder.generate(encoded, lang3_id, max_len=max_len)
             a, b = self.eval_rythm(sent3_)

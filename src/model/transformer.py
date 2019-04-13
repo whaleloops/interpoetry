@@ -216,7 +216,7 @@ class TransformerDecoder(nn.Module):
                 proj[i].bias = proj[0].bias
         self.proj = nn.ModuleList(proj)
 
-    def forward(self, encoded, y, lang_id, one_hot=False, incremental_state=None):
+    def forward(self, encoded, y, lang_id=None, use_lens=False, lens=None ,one_hot=False, incremental_state=None, out_attn=False):
         assert not one_hot, 'one_hot=True has not been implemented for transformer'
         assert type(lang_id) is int
 
@@ -234,20 +234,43 @@ class TransformerDecoder(nn.Module):
         x = self.embed_scale * embed_tokens(prev_output_tokens)
         x = x.detach() if self.freeze_dec_emb else x
         x += positions
-        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = F.dropout(x, p=self.dropout, training=self.training) # T x B X hidden_dim(768)
+        if use_lens:
+            # logger.info(x.shape)
+            # logger.info(lens.shape)
+            # logger.info(x[0,:,-1].shape)
+            x[0,:,-1]+=lens.type('torch.cuda.FloatTensor')
 
         # decoder layers
-        for layer in self.layers:
-            x, attn = layer[lang_id](
-                x,
-                encoder_out['encoder_out'],
-                encoder_out['encoder_padding_mask'],
-                incremental_state=incremental_state,
-            )
+        if out_attn:
+            e_d_attns = []
+            d_d_attns = []
+            for layer in self.layers:
+                x, e_d_attn, d_d_attn = layer[lang_id](
+                    x,
+                    encoder_out['encoder_out'],
+                    encoder_out['encoder_padding_mask'],
+                    incremental_state=incremental_state,
+                    out_attn=out_attn
+                )
+                e_d_attns.append(e_d_attn)
+                d_d_attns.append(d_d_attn)
+        else:
+            for layer in self.layers:
+                x = layer[lang_id](
+                    x,
+                    encoder_out['encoder_out'],
+                    encoder_out['encoder_padding_mask'],
+                    incremental_state=incremental_state,
+                    out_attn=out_attn
+                )
+
 
         # project back to size of vocabulary
         x = proj_layer(x)
 
+        if out_attn:
+            return x, e_d_attns, d_d_attns
         return x
 
     def max_positions(self):
@@ -460,10 +483,10 @@ class TransformerDecoderLayer(nn.Module):
         self.fc2 = Linear(args.decoder_ffn_embed_dim, self.embed_dim)
         self.layer_norms = nn.ModuleList([LayerNorm(self.embed_dim) for i in range(3)])
 
-    def forward(self, x, encoder_out, encoder_padding_mask, incremental_state=None):
+    def forward(self, x, encoder_out, encoder_padding_mask, incremental_state=None, out_attn=False):
         residual = x
         x = self.maybe_layer_norm(0, x, before=True)
-        x, _ = self.self_attn(
+        x, dec_dec_attn = self.self_attn(
             query=x, key=x, value=x, mask_future_timesteps=True,
             incremental_state=incremental_state, need_weights=False,
         )
@@ -473,7 +496,7 @@ class TransformerDecoderLayer(nn.Module):
 
         residual = x
         x = self.maybe_layer_norm(1, x, before=True)
-        x, attn = self.encoder_attn(
+        x, enc_dec_attn = self.encoder_attn(
             query=x, key=encoder_out, value=encoder_out,
             key_padding_mask=encoder_padding_mask,
             incremental_state=incremental_state, static_kv=True,
@@ -490,7 +513,9 @@ class TransformerDecoderLayer(nn.Module):
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = residual + x
         x = self.maybe_layer_norm(2, x, after=True)
-        return x, attn
+        if out_attn:
+            return x, enc_dec_attn, dec_dec_attn
+        return x
 
     def maybe_layer_norm(self, i, x, before=False, after=False):
         assert before ^ after

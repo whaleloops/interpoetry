@@ -25,7 +25,7 @@ import torch
 import random
 random.seed(42)
 
-MAX_SENT_LEN=75 #TODO: 130
+MAX_SENT_LEN=75 #TODO: 75, 130
 PUNC = ['.','"',u'？',u'。',u'！',u'”']
 unk_index=0
 
@@ -105,12 +105,13 @@ def get_data(input_sents, tokenizer, issanwen):
     too_long_sent_count = 0
     long_sent_count = 0
     # for ind in range(len(input_sents)):
-    for ind in tqdm(range(len(input_sents)), mininterval=60.0*20):
+    for ind in tqdm(range(len(input_sents)), mininterval=60.0*20, maxinterval=60.0*30):
         sent=input_sents[ind]
         if issanwen:
             realmax_len = np.random.normal(loc=69.0, scale=10.0, size=None) #TODO: 99
         else:
             realmax_len=MAX_SENT_LEN
+        # realmax_len=MAX_SENT_LEN
         
         if realmax_len > MAX_SENT_LEN:
             realmax_len = MAX_SENT_LEN 
@@ -267,6 +268,9 @@ if __name__ == '__main__':
             check_rythm(train_sents, tokenizer, length_type)
         # process data
         data, sent, sent_abs = get_data(train_sents, tokenizer, issanwen)
+        with io.open(txt_path+ '.tr.summary.txt', "w", encoding='utf8') as f:
+            for line in sent_abs:
+                f.write(line+'\n')      
         # saveing data
         logger.info("Saving the data to %s ..." % bin_path_tr)
         torch.save(data, bin_path_tr)

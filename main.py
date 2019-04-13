@@ -248,6 +248,8 @@ def get_parser():
                         help="threshold for anti-repetition rl reward")
 
     # summary
+    parser.add_argument("--use_lens", type=bool, default=False,
+                        help="whether to use len as input")
     parser.add_argument("--use_summary", type=bool, default=False,
                         help="whether to use summary to shrink input sanwen")
 

@@ -482,7 +482,7 @@ class TrainerMT(MultiprocessingEventLoop):
         self.stats['enc_norms_%s' % lang1].append(encoded.dis_input.data.norm(2, 1).mean().item())
 
         # cross-entropy scores / loss
-        scores = self.decoder(encoded, sent2[:-1], lang2_id)
+        scores = self.decoder(encoded, sent2[:-1], use_lens=params.use_lens ,lens=len2.to(device), lang_id=lang2_id)
         xe_loss = loss_fn(scores.view(-1, n_words), sent2[1:].view(-1))
         if back:
             self.stats['xe_costs_bt_%s_%s' % (lang1, lang2)].append(xe_loss.item())
@@ -692,7 +692,7 @@ class TrainerMT(MultiprocessingEventLoop):
         else:
             # lang1 -> lang2
             encoded = self.encoder(sent1, len1, lang_id=lang1_id)
-            scores = self.decoder(encoded, sent2[:-1], lang_id=lang2_id)
+            scores = self.decoder(encoded, sent2[:-1], use_lens=params.use_lens, lens=len2.to(device), lang_id=lang2_id)
             assert scores.size() == (len2.max() - 1, bs, n_words2)
 
             # lang2 -> lang3
@@ -705,7 +705,7 @@ class TrainerMT(MultiprocessingEventLoop):
             # logger.info(sent2_input.shape)
             encoded = self.encoder(sent2, len2, lang_id=lang2_id, embed_input=sent2_input)
         # get scores and samples
-        scores = self.decoder(encoded, sent3[:-1], lang_id=lang3_id)
+        scores = self.decoder(encoded, sent3[:-1], use_lens=params.use_lens, lens=len3.to(device), lang_id=lang3_id)
 
         # only ml loss
         ml_loss = loss_fn(scores.view(-1, n_words3), sent3[1:].view(-1))
@@ -788,7 +788,7 @@ class TrainerMT(MultiprocessingEventLoop):
         else:
             # lang1 -> lang2
             encoded = self.encoder(sent1, len1, lang_id=lang1_id)
-            scores = self.decoder(encoded, sent2[:-1], lang_id=lang2_id)
+            scores = self.decoder(encoded, sent2[:-1], use_lens=params.use_lens, lens=len2.to(device),lang_id=lang2_id)
             assert scores.size() == (len2.max() - 1, bs, n_words2)
 
             # lang2 -> lang3
@@ -802,7 +802,7 @@ class TrainerMT(MultiprocessingEventLoop):
             encoded = self.encoder(sent2, len2, lang_id=lang2_id, embed_input=sent2_input)
 
         # cross-entropy scores / loss
-        scores = self.decoder(encoded, sent3[:-1], lang_id=lang3_id)
+        scores = self.decoder(encoded, sent3[:-1], use_lens=params.use_lens, lens=len3.to(device),lang_id=lang3_id)
         # calculate ml loss
         ml_loss = loss_fn(scores.view(-1, n_words3), sent3[1:].view(-1))
         self.stats['ml_costs_%s_%s_%s' % direction].append(ml_loss.item())
