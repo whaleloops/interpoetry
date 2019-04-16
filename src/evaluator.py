@@ -145,7 +145,7 @@ class EvaluatorMT(object):
                 lang2_txt = []
 
                 # convert to text
-                for (sent1, len1), (sent2, len2) in self.get_iterator(data_type, lang1, lang2):
+                for (sent1, len1), (sent2, len2) in self. ator(data_type, lang1, lang2):
                     lang1_txt.extend(convert_to_text(sent1, len1, self.dico[lang1], lang1_id, params))
                     lang2_txt.extend(convert_to_text(sent2, len2, self.dico[lang2], lang2_id, params))
 
@@ -248,7 +248,7 @@ class EvaluatorMT(object):
 
 
 
-    def eval_para(self, lang1, lang2, data_type, scores, device, bleu_eval=True):
+    def eval_para(self, lang1, lang2, data_type, scores, device, params = None, bleu_eval=True):
         """
         Evaluate lang1 -> lang2 perplexity and BLEU scores.
         """
@@ -276,11 +276,16 @@ class EvaluatorMT(object):
 
             # batch
             (sent1, len1), (sent_abs, len_abs), (sent2, len2) = batch
+            if data_type.startswith('test'):
+                if params.use_summary and lang1 == 'sw':
+                    sent1 = sent_abs
+                    len1 = len_abs
             sent1, sent2 = sent1.to(device), sent2.to(device)
 
             # encode / decode / generate
             encoded = self.encoder(sent1, len1, lang1_id)
-            decoded = self.decoder(encoded, sent2[:-1], lang_id=lang2_id, use_lens=params.use_lens, lens=len2.to(device))
+            decoded = self.decoder(encoded, sent2[:-1], lang2_id)
+            # decoded = self.decoder(encoded, sent2[:-1], lang_id=lang2_id, use_lens=params.use_lens, lens=len2.to(device))
             max_len = self.params.max_len[lang2_id]
             sent2_, len2_, _ = self.decoder.generate(encoded, lang2_id, max_len=max_len)
 
@@ -366,7 +371,8 @@ class EvaluatorMT(object):
 
             # encode / decode / generate lang2 -> lang3
             encoded = self.encoder(sent2_.to(device), len2_, lang2_id)
-            decoded = self.decoder(encoded, sent3[:-1], lang_id=lang3_id, use_lens=params.use_lens, lens=len3.to(device))
+            decoded = self.decoder(encoded, sent3[:-1], lang3_id)
+            # decoded = self.decoder(encoded, sent3[:-1], lang_id=lang3_id, use_lens=params.use_lens, lens=len3.to(device))
             max_len = self.params.max_len[lang3_id]
             sent3_, len3_, _ = self.decoder.generate(encoded, lang3_id, max_len=max_len)
             a, b = self.eval_rythm(sent3_)
@@ -423,7 +429,7 @@ class EvaluatorMT(object):
         if rytm_total-rytm_ntcount!=0:
             scores['rytm_%s_%s_%s_%s_back' % (lang1, lang2, lang3, data_type)] = float(rytm_correct)/(rytm_total-rytm_ntcount)
 
-    def run_all_evals(self, epoch):
+    def run_all_evals(self, epoch, params):
         """
         Run all evaluations.
         """
@@ -438,7 +444,7 @@ class EvaluatorMT(object):
             lang2='sw'
             lang3='pm'
             for data_type in ['test1']:
-                self.eval_transfer(lang2, lang3, data_type, scores, device, bleu_eval=False)
+                self.eval_transfer(lang2, lang3, data_type, scores, device, params, bleu_eval=False)
             # gen_time1 = time.time() - before_gen
 
             # lang1, lang2, lang3 = self.params.pivo_directions[0]
@@ -446,7 +452,7 @@ class EvaluatorMT(object):
             lang2='sw'
             lang3='pm'
             for data_type in ['test']:
-                self.eval_para(lang2, lang3, data_type, scores, device, bleu_eval=True)
+                self.eval_para(lang2, lang3, data_type, scores, device, params, bleu_eval=True)
                 # self.eval_transfer(lang2, lang3, data_type, scores, device, bleu_eval=True)
             # gen_time1 = time.time() - before_gen
             
@@ -467,7 +473,7 @@ class EvaluatorMT(object):
 
         return scores
 
-    def eval_transfer(self, lang1, lang2, data_type, scores, device, bleu_eval=False):
+    def eval_transfer(self, lang1, lang2, data_type, scores, device, params = None, bleu_eval=False):
         """
         Evaluate lang1 -> lang2 perplexity and BLEU scores.
         """
@@ -493,6 +499,10 @@ class EvaluatorMT(object):
 
             # batch
             (sent1, len1), (sent_abs, len_abs) = batch
+            if data_type.startswith('test'):
+                if params.use_summary and lang1 == 'sw':
+                    sent1 = sent_abs
+                    len1 = len_abs
             sent1 = sent1.to(device)
 
             # encode / decode / generate

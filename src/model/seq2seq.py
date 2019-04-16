@@ -259,7 +259,7 @@ class Decoder(nn.Module):
                 proj[i].bias = proj[0].bias
         self.proj = nn.ModuleList(proj)
 
-    def forward(self, encoded, y, lang_id=None, lens=None, one_hot=False):
+    def forward(self, encoded, y, lang_id=None, one_hot=False):
         """
         Input:
             - LongTensor of size (slen, bs), word indices

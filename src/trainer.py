@@ -355,6 +355,9 @@ class TrainerMT(MultiprocessingEventLoop):
         encoded = []
         for lang_id, lang in enumerate(self.params.langs):
             (sent1, len1), (sent_abs, len_abs) = self.get_batch('dis', lang, None)
+            if self.params.use_summary and lang == 'sw':
+                sent1 = sent_abs
+                len1 = len_abs
             with torch.no_grad():
                 encoded.append(self.encoder(sent1.cuda(), len1, lang_id))
 
@@ -460,6 +463,9 @@ class TrainerMT(MultiprocessingEventLoop):
             (sent1, len1), (sent_abs, len_abs), (sent2, len2) = self.get_batch('encdec', lang1, lang2, back=True)
         elif lang1 == lang2:
             (sent1, len1), (sent_abs, len_abs) = self.get_batch('encdec', lang1, None)
+            if self.params.use_summary and lang1 == 'sw':
+                sent1 = sent_abs
+                len1 = len_abs
             sent2, len2 = sent1, len1
         else:
             (sent1, len1), (sent_abs, len_abs), (sent2, len2) = self.get_batch('encdec', lang1, lang2)
@@ -482,7 +488,7 @@ class TrainerMT(MultiprocessingEventLoop):
         self.stats['enc_norms_%s' % lang1].append(encoded.dis_input.data.norm(2, 1).mean().item())
 
         # cross-entropy scores / loss
-        scores = self.decoder(encoded, sent2[:-1], use_lens=params.use_lens ,lens=len2.to(device), lang_id=lang2_id)
+        scores = self.decoder(encoded, sent2[:-1], lang2_id)
         xe_loss = loss_fn(scores.view(-1, n_words), sent2[1:].view(-1))
         if back:
             self.stats['xe_costs_bt_%s_%s' % (lang1, lang2)].append(xe_loss.item())
@@ -607,13 +613,14 @@ class TrainerMT(MultiprocessingEventLoop):
                 assert lang1 != lang2 and lang2 != lang3 and lang1 != lang3
                 if self.params.lambda_xe_otfd > 0:
                     (sent1, len1), (sent_abs, len_abs), (sent3, len3) = self.get_batch('otf', lang1, lang3)
-
             batches.append({
                 'direction': direction,
                 'sent1': sent1,
                 'sent3': sent3,
                 'len1': len1,
                 'len3': len3,
+                'sent1_abs': sent_abs,
+                'len1_abs': len_abs,
             })
 
         return batches
@@ -636,7 +643,9 @@ class TrainerMT(MultiprocessingEventLoop):
                 lang2_id = params.lang2id[lang2]
                 sent1, len1 = batch['sent1'], batch['len1']
                 sent3, len3 = batch['sent3'], batch['len3']
-
+                sent1_abs, len1_abs = batch['sent1_abs'], batch['len1_abs']
+                if params.use_summary and lang1 == 'sw':
+                    sent1, len1 = sent1_abs, len1_abs
                 # lang1 -> lang2
                 encoded = self.encoder(sent1, len1, lang_id=lang1_id)
                 max_len = self.params.max_len[lang2_id]
@@ -655,11 +664,12 @@ class TrainerMT(MultiprocessingEventLoop):
                     ('lang1', lang1), ('sent1', sent1), ('len1', len1),
                     ('lang2', lang2), ('sent2', sent2), ('len2', len2),
                     ('lang3', lang3), ('sent3', sent3), ('len3', len3),
+                    ('sent1_abs', sent1_abs), ('len1_abs', len1_abs),
                 ]))
 
         return (rank, results)
 
-    def otf_bt_rl(self, batch, lambda_xe, backprop_temperature, reward_gamma_ap, reward_gamma_ar, reward_type_ar, reward_thresh_ar):
+    def otf_bt_rl(self, batch, lambda_xe, backprop_temperature, reward_gamma_ap, reward_gamma_ar, reward_type_ar, reward_thresh_ar, reward_gamma_cv):
         """
         On the fly back-translation.
         """
@@ -667,6 +677,7 @@ class TrainerMT(MultiprocessingEventLoop):
         lang1, sent1, len1 = batch['lang1'], batch['sent1'], batch['len1']
         lang2, sent2, len2 = batch['lang2'], batch['sent2'], batch['len2']
         lang3, sent3, len3 = batch['lang3'], batch['sent3'], batch['len3']
+        sent1_abs, len1_abs = batch['sent1_abs'], batch['len1_abs']
         if lambda_xe == 0:
             logger.warning("Unused generated CPU batch for direction %s-%s-%s!" % (lang1, lang2, lang3))
             return
@@ -692,7 +703,7 @@ class TrainerMT(MultiprocessingEventLoop):
         else:
             # lang1 -> lang2
             encoded = self.encoder(sent1, len1, lang_id=lang1_id)
-            scores = self.decoder(encoded, sent2[:-1], use_lens=params.use_lens, lens=len2.to(device), lang_id=lang2_id)
+            scores = self.decoder(encoded, sent2[:-1], lang_id=lang2_id)
             assert scores.size() == (len2.max() - 1, bs, n_words2)
 
             # lang2 -> lang3
@@ -705,7 +716,7 @@ class TrainerMT(MultiprocessingEventLoop):
             # logger.info(sent2_input.shape)
             encoded = self.encoder(sent2, len2, lang_id=lang2_id, embed_input=sent2_input)
         # get scores and samples
-        scores = self.decoder(encoded, sent3[:-1], use_lens=params.use_lens, lens=len3.to(device), lang_id=lang3_id)
+        scores = self.decoder(encoded, sent3[:-1], lang_id=lang3_id)
 
         # only ml loss
         ml_loss = loss_fn(scores.view(-1, n_words3), sent3[1:].view(-1))
@@ -731,6 +742,16 @@ class TrainerMT(MultiprocessingEventLoop):
             rl_loss_ar = torch.mean(rl_loss_ar_unweighted * weights_ar)
             self.stats['rl_costs_ar_%s_%s_%s' % direction].append(rl_loss_ar.item())
             final_loss += rl_loss_ar
+
+        if reward_gamma_cv > 0 and lang1 == 'pm' and lang2 == 'sw' and lang3 == 'pm':
+            samples = torch.from_numpy(get_samples(scores)).to(device)
+            bases = torch.from_numpy(get_bases(scores)).to(device)
+            # rl loss coverage
+            rl_loss_cv_unweighted = loss_fn_no_mean(scores.view(-1, n_words3), samples.view(-1))
+            weights_cv = (get_weights_cv(bases, samples, sent1_abs[1:]) * torch.Tensor([reward_gamma_ap])).to(device)
+            rl_loss_cv = torch.mean(rl_loss_cv_unweighted * weights_cv)
+            self.stats['rl_costs_cv_%s_%s_%s' % direction].append(rl_loss_cv.item())
+            final_loss += rl_loss_cv
 
         assert lambda_xe > 0
         loss = lambda_xe * final_loss
@@ -788,7 +809,7 @@ class TrainerMT(MultiprocessingEventLoop):
         else:
             # lang1 -> lang2
             encoded = self.encoder(sent1, len1, lang_id=lang1_id)
-            scores = self.decoder(encoded, sent2[:-1], use_lens=params.use_lens, lens=len2.to(device),lang_id=lang2_id)
+            scores = self.decoder(encoded, sent2[:-1], lang_id=lang2_id)
             assert scores.size() == (len2.max() - 1, bs, n_words2)
 
             # lang2 -> lang3
@@ -802,7 +823,7 @@ class TrainerMT(MultiprocessingEventLoop):
             encoded = self.encoder(sent2, len2, lang_id=lang2_id, embed_input=sent2_input)
 
         # cross-entropy scores / loss
-        scores = self.decoder(encoded, sent3[:-1], use_lens=params.use_lens, lens=len3.to(device),lang_id=lang3_id)
+        scores = self.decoder(encoded, sent3[:-1], lang_id=lang3_id)
         # calculate ml loss
         ml_loss = loss_fn(scores.view(-1, n_words3), sent3[1:].view(-1))
         self.stats['ml_costs_%s_%s_%s' % direction].append(ml_loss.item())

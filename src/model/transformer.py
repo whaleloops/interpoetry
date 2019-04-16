@@ -216,7 +216,8 @@ class TransformerDecoder(nn.Module):
                 proj[i].bias = proj[0].bias
         self.proj = nn.ModuleList(proj)
 
-    def forward(self, encoded, y, lang_id=None, use_lens=False, lens=None ,one_hot=False, incremental_state=None, out_attn=False):
+    def forward(self, encoded, y, lang_id, one_hot=False, incremental_state=None, out_attn=False, use_lens=False):
+        # def forward(self, encoded, y, lang_id=None, use_lens=False, lens=None ,one_hot=False, incremental_state=None, out_attn=False):
         assert not one_hot, 'one_hot=True has not been implemented for transformer'
         assert type(lang_id) is int
 
@@ -235,11 +236,11 @@ class TransformerDecoder(nn.Module):
         x = x.detach() if self.freeze_dec_emb else x
         x += positions
         x = F.dropout(x, p=self.dropout, training=self.training) # T x B X hidden_dim(768)
-        if use_lens:
-            # logger.info(x.shape)
-            # logger.info(lens.shape)
-            # logger.info(x[0,:,-1].shape)
-            x[0,:,-1]+=lens.type('torch.cuda.FloatTensor')
+        # if use_lens:
+        #     # logger.info(x.shape)
+        #     # logger.info(lens.shape)
+        #     # logger.info(x[0,:,-1].shape)
+        #     x[0,:,-1]+=lens.type('torch.cuda.FloatTensor')
 
         # decoder layers
         if out_attn:

@@ -244,14 +244,15 @@ def get_parser():
                         help="weight of anti-repetition rl loss")
     parser.add_argument("--reward_type_ar", type=str, default='punish',
                         help="weight of anti-repetition rl loss (encourage or punish)")
-    parser.add_argument("--reward_thresh_ar", type=float, default=0.5,
+    parser.add_argument("--reward_thresh_ar", type=float, default=0.15,
                         help="threshold for anti-repetition rl reward")
-
-    # summary
+    parser.add_argument("--reward_gamma_cv", type=float, default=0.0,
+                        help="weight of coverage loss")
     parser.add_argument("--use_lens", type=bool, default=False,
                         help="whether to use len as input")
+    # summary
     parser.add_argument("--use_summary", type=bool, default=False,
-                        help="whether to use summary to shrink input sanwen")
+                        help="simply use summary as replacement for long input sentences")
 
     return parser
 
@@ -261,6 +262,11 @@ def main(params):
     assert params.exp_name
     check_all_data_params(params)
     check_mt_model_params(params)
+
+    # import pickle
+    # with open('params.pkl', 'wb') as f_in:
+    #     pickle.dump(params, f_in)
+    # exit()
 
     # initialize experiment / load data / build model
     logger = initialize_exp(params)
@@ -368,7 +374,9 @@ def main(params):
                                                   params.reward_gamma_ap,
                                                   params.reward_gamma_ar,
                                                   params.reward_type_ar,
-                                                  params.reward_thresh_ar)
+                                                  params.reward_thresh_ar,
+                                                  params.reward_gamma_cv
+                                                  )
                             else:
                                 trainer.otf_bt(batch, params.lambda_xe_otfd, params.otf_backprop_temperature)
                         # 3-lang back-translation - parallel data
@@ -383,7 +391,7 @@ def main(params):
 
         # evaluate discriminator / perplexity / BLEU 
         # scores=0
-        scores = evaluator.run_all_evals(trainer.epoch) #TODO
+        scores = evaluator.run_all_evals(trainer.epoch, params) #TODO
 
         # print / JSON log
         for k, v in scores.items():

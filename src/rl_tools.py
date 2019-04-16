@@ -12,7 +12,6 @@ for id in range(len(con)):
     id2word[id] = con[id].strip()
 word2id = dict(zip(id2word.values(), id2word.keys()))
 pad_id = word2id['[PAD]']
-# pad_id = params.pad_index
 
 # Given a distribution, sample a list of tokens from it
 def get_samples(scores):
@@ -40,7 +39,7 @@ def filter_sent(sent_in):
             sent_out.append(token)
     return np.array(sent_out)
 
-# This reward function calculates the intersection ratio of 5-grams of sw and pm
+# This reward function calculates the intersection ratio of 5-grams of sw and generated pm
 def reward_func_ap(sw_pred, pm_gold, n = 5):
     sw_pred = filter_sent(sw_pred)
     ngrams_sw = find_ngrams(sw_pred, n)
@@ -51,18 +50,43 @@ def reward_func_ap(sw_pred, pm_gold, n = 5):
 # This reward function calculates the intersection ratio between one sentence
 def reward_func_ar(sw_pred, thresh, reward_type = 'punish'):
     sw_pred = filter_sent(sw_pred)
-    unique_ratio = len(set(sw_pred))/float(len(sw_pred))
+    sent_length = len(sw_pred)
+    vocab_size = len(set(sw_pred))
+    rep_ratio = (sent_length-vocab_size) / float(sent_length)
     assert reward_type in ['encourage', 'punish']
     if reward_type == 'encourage':
-        if unique_ratio > thresh:
+        if rep_ratio < thresh:
             return 1.0
         else:
-            return unique_ratio
+            return -1 * rep_ratio
     else:
-        if unique_ratio > thresh:
+        if rep_ratio < thresh:
             return 1.0
         else:
-            return unique_ratio - thresh
+            return  thresh - rep_ratio
+
+# def reward_func_ar(sw_pred, thresh, reward_type = 'punish'):
+#     sw_pred = filter_sent(sw_pred)
+#     unique_ratio = len(set(sw_pred))/float(len(sw_pred))
+#     assert reward_type in ['encourage', 'punish']
+#     if reward_type == 'encourage':
+#         if unique_ratio > thresh:
+#             return 1.0
+#         else:
+#             return unique_ratio
+#     else:
+#         if unique_ratio > thresh:
+#             return 1.0
+#         else:
+#             return unique_ratio - thresh
+
+# This reward function calculates the intersection ratio of bleu score of generated pm and abstract sw
+def reward_func_cv(pm_pred, sw_abs, n=2):
+    pm_pred = filter_sent(pm_pred)
+    ngrams_pm = find_ngrams(pm_pred, n)
+    ngrams_sw = find_ngrams(sw_abs, n)
+    intersection_ratio = len(set(ngrams_pm).intersection(ngrams_sw)) / float(len(ngrams_pm))
+    return intersection_ratio
 
 def get_weights_ap(bases_in, samples_in, pm_golds):
     pm_golds = pm_golds.cpu().numpy()
@@ -84,6 +108,19 @@ def get_weights_ar(bases_in, thresh, reward_type = 'punish'):
     for i in range(bsz):
         weight = reward_func_ar(bases[:,i], thresh, reward_type)
         weights += [weight for j in range(seq_len)]
+    weights = np.array(weights).transpose()
+    return torch.Tensor(weights).view(-1)
+
+def get_weights_cv(bases_in, samples_in, sw_abss):
+    sw_abss = sw_abss.cpu().numpy()
+    bases = bases_in.cpu().numpy()
+    samples = samples_in.cpu().numpy()
+    weights = []
+    assert samples.shape == bases.shape
+    seq_len, bsz = bases.shape
+    for i in range(bsz):
+        weight = reward_func_cv(samples[:, i], sw_abss[:, i]) - reward_func_cv(bases[:, i], sw_abss[:, i])
+        weights.append([weight for j in range(seq_len)])
     weights = np.array(weights).transpose()
     return torch.Tensor(weights).view(-1)
 

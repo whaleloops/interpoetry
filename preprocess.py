@@ -194,6 +194,7 @@ def get_data(input_sents, tokenizer, issanwen):
     return data, sent_str, sent_str_abs
 
 # python preprocess.py data/vocab.txt data/sanwen/sanwen sanwen abc 5
+# python preprocess.py data/vocab.txt data/sanwen.te.txt sanwen abc 5
 # python preprocess.py data/vocab.txt data/para/jueju5_out abc juejue 5
 
 if __name__ == '__main__':
