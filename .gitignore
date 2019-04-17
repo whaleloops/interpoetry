@@ -1,4 +1,4 @@
 *.pyc
-data/
-dumped/
-commands/
+/data/
+/dumped/
+/commands/
