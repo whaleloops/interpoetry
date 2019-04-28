@@ -18,7 +18,6 @@ EOS_WORD = '[EOS]'
 PAD_WORD = '[PAD]'
 UNK_WORD = '[UNK]'
 CLS_WORD = '[CLS]'
-CLS_WORD = '[CLS]'
 SEP_WORD = '[SEP]'
 MASK_WORD = '[MASK]'
 

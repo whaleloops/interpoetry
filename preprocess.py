@@ -28,6 +28,7 @@ random.seed(42)
 MAX_SENT_LEN=75 #TODO: 75, 130
 PUNC = ['.','"',u'？',u'。',u'！',u'”']
 unk_index=0
+PADDING_IDX=1
 
 def zng(paragraph):
     for sent in re.findall(u'.+[.。?？!！\"”]', paragraph, flags=re.U):
@@ -90,7 +91,7 @@ def split_train_valid(txt_path, train_prob, pron_dict, isjueju, length_type):
     return train_input, valid_input
 
 
-def get_data(input_sents, tokenizer, issanwen):
+def get_data(input_sents, tokenizer, issanwen, dopmpad):
     sent_str = []
     positions = []
     sentences = []
@@ -131,13 +132,23 @@ def get_data(input_sents, tokenizer, issanwen):
         token_s = tokenizer.tokenize(sent)
         # if len(token_s) == 0:
         #     print("Empty sentence in line %i." % line_count)
-        if len(token_s) > 31: #TODO: 21
+        if len(token_s) > 21: #TODO: 31
             # index sentence words
             indexed = tokenizer.convert_tokens_to_ids(token_s)
             unk_idxs = [i for i, e in enumerate(indexed) if e == 100]
             for unk_idx in unk_idxs:
                 w = sent[unk_idx] 
                 unk_words[w] = unk_words.get(w, 0) + 1
+            if dopmpad:
+                ind_len = len(indexed)
+                indexed = np.array(indexed)
+                sliced = list(range(2,ind_len+1,2))+list(range(2,ind_len+1,2))
+                # logger.info(ind)
+                # logger.info(indexed.shape)
+                indexed = np.insert(indexed, sliced, [PADDING_IDX]*ind_len)
+                # logger.info(indexed.shape)
+                # logger.info(indexed)
+
             # add sentence
             sent_str.append(sent)
             positions.append([len(sentences), len(sentences) + len(indexed)])
@@ -193,9 +204,12 @@ def get_data(input_sents, tokenizer, issanwen):
         logger.info(np.std(sentences_abs_len))
     return data, sent_str, sent_str_abs
 
-# python preprocess.py data/vocab.txt data/sanwen/sanwen sanwen abc 5
-# python preprocess.py data/vocab.txt data/sanwen.te.txt sanwen abc 5
-# python preprocess.py data/vocab.txt data/para/jueju5_out abc juejue 5
+# python preprocess.py data/vocab.txt data/sanwen/sanwen sanwen abc nopmpad 5 
+# python preprocess.py data/vocab.txt data/sanwen.te.txt sanwen abc nopmpad 5 
+# python preprocess.py data/vocab.txt data/para/jueju5_out abc juejue nopmpad 5 
+# python preprocess.py data/vocab.txt data/jueju7_out abc juejue pmpad 7 
+# python preprocess.py data/vocab.txt data/poem7_out abc juejue pmpad 7
+# python preprocess.py data/vocab.txt data/poem_jueju7.txt  abc abc pmpad 7
 
 if __name__ == '__main__':
 
@@ -207,7 +221,8 @@ if __name__ == '__main__':
     bin_path_vl = sys.argv[2] + '.vl.pth'
     issanwen = sys.argv[3]
     isjueju = sys.argv[4]
-    length_type = sys.argv[5]
+    dopmpad = sys.argv[5]
+    length_type = sys.argv[6]
     length_type = int(length_type)
     assert length_type==5 or length_type==7
     if issanwen.startswith('sanw'):
@@ -218,10 +233,16 @@ if __name__ == '__main__':
         isjueju = True
     else:
         isjueju = False
+    if dopmpad.startswith('pmpad'):
+        dopmpad = True
+    else:
+        dopmpad = False
     logger.info ("is sanwen?: ")
     logger.info (issanwen)
     logger.info ("is jueju?: ")
     logger.info (isjueju)
+    logger.info ("do pm pad?: ")
+    logger.info (dopmpad)
     logger.info ("length_type: ")
     logger.info (length_type)
     vocab_rytm_file = 'data/vocab_rytm.json'
@@ -268,7 +289,7 @@ if __name__ == '__main__':
         if not issanwen:
             check_rythm(train_sents, tokenizer, length_type)
         # process data
-        data, sent, sent_abs = get_data(train_sents, tokenizer, issanwen)
+        data, sent, sent_abs = get_data(train_sents, tokenizer, issanwen, dopmpad)
         with io.open(txt_path+ '.tr.summary.txt', "w", encoding='utf8') as f:
             for line in sent_abs:
                 f.write(line+'\n')      
@@ -301,7 +322,7 @@ if __name__ == '__main__':
     else:
         # split train_valid
         logger.info("Spliting train valid from input...")
-        train_sents, valid_sents = split_train_valid(txt_path, 0.85, pron_dict, isjueju, length_type)
+        train_sents, valid_sents = split_train_valid(txt_path, 0.75, pron_dict, isjueju, length_type)
 
         # eval rythm:
         if not issanwen:
@@ -310,7 +331,7 @@ if __name__ == '__main__':
 
         # process data
         logger.info("Processing training data...")
-        data, sent, sent_abs = get_data(train_sents, tokenizer, issanwen)
+        data, sent, sent_abs = get_data(train_sents, tokenizer, issanwen, dopmpad)
         # saveing data
         logger.info("Saving the sent to %s ..." % txt_path+ '.tr.txt')
         with io.open(txt_path+ '.tr.txt', "w", encoding='utf8') as f:
@@ -349,7 +370,7 @@ if __name__ == '__main__':
 
         # process data
         logger.info("Processing valid data...")
-        data, sent, sent_abs = get_data(valid_sents, tokenizer, issanwen)
+        data, sent, sent_abs = get_data(valid_sents, tokenizer, issanwen, dopmpad)
         # saveing data
         logger.info("Saving the sent to %s ..." % txt_path+ '.vl.txt')
         with io.open(txt_path+ '.vl.txt', "w", encoding='utf8') as f:

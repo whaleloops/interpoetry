@@ -11,7 +11,7 @@ import torch
 
 from ..utils import create_word_masks
 from .dataset import MonolingualDataset, ParallelDataset
-from .dictionary import EOS_WORD, PAD_WORD, UNK_WORD, SPECIAL_WORD, SPECIAL_WORDS, MASK_WORD
+from .dictionary import BOS_WORD, SEP_WORD, EOS_WORD, PAD_WORD, UNK_WORD, SPECIAL_WORD, SPECIAL_WORDS, MASK_WORD
 
 
 logger = getLogger()
@@ -31,6 +31,8 @@ def load_binarized(path, params):
     logger.info("Loading data from %s ..." % path)
     data = torch.load(path)
     data['positions'] = data['positions'].numpy()
+    if params.do_pad:
+        data['sentences'][data['sentences']==1] = params.pad_index
     logger.info("%i words (%i unique) in %i sentences. %i unknown words (%i unique)." % (
         len(data['sentences']) - len(data['positions']),
         len(data['dico']), len(data['positions']),
@@ -98,22 +100,27 @@ def set_parameters(params, dico):
     """
     Define parameters / check dictionaries.
     """
+    sos_index = dico.index(BOS_WORD)
     eos_index = dico.index(EOS_WORD)
     pad_index = dico.index(PAD_WORD)
     unk_index = dico.index(UNK_WORD)
     blank_index = dico.index(MASK_WORD)
+    sep_index = dico.index(SEP_WORD)
     bos_index = [dico.index(SPECIAL_WORD % (i + 1)) for i in range(params.n_langs)]
     if hasattr(params, 'eos_index'):
         assert params.eos_index == eos_index
         assert params.pad_index == pad_index
         assert params.unk_index == unk_index
         assert params.blank_index == blank_index
+        assert params.sep_index == sep_index
         assert params.bos_index == bos_index
     else:
+        params.sos_index = sos_index
         params.eos_index = eos_index
         params.pad_index = pad_index
         params.unk_index = unk_index
         params.blank_index = blank_index
+        params.sep_index = sep_index
         params.bos_index = bos_index
 
 

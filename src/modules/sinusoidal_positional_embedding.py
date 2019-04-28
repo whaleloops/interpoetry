@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 
 
-def make_positions(tensor, padding_idx, left_pad):
+def make_positions(tensor, padding_idx, left_pad, is_short=False):
     """Replace non-padding symbols with their position numbers.
     Position numbers begin at padding_idx+1.
     Padding symbols are ignored, but it is necessary to specify whether padding
@@ -27,6 +27,8 @@ def make_positions(tensor, padding_idx, left_pad):
         torch.arange(padding_idx + 1, max_pos, out=make_positions.range_buf)
     mask = tensor.ne(padding_idx)
     positions = make_positions.range_buf[:tensor.size(0)].unsqueeze(-1).expand(-1, tensor.size(1))
+    if is_short:
+        positions = positions*2
     if left_pad:
         positions = positions - mask.size(0) + mask.long().sum(dim=0).unsqueeze(0)
     return tensor.clone().masked_scatter_(mask, positions[mask])
@@ -39,7 +41,7 @@ class SinusoidalPositionalEmbedding(nn.Module):
     is added on the left side (left_pad=True) or right side (left_pad=False).
     """
 
-    def __init__(self, embedding_dim, padding_idx, left_pad, init_size=1024):
+    def __init__(self, embedding_dim, padding_idx, left_pad, init_size=1024, is_short=False):
         super().__init__()
         self.embedding_dim = embedding_dim
         self.padding_idx = padding_idx
@@ -70,7 +72,7 @@ class SinusoidalPositionalEmbedding(nn.Module):
             emb[padding_idx, :] = 0
         return emb
 
-    def forward(self, input, incremental_state=None):
+    def forward(self, input, incremental_state=None, is_short=False):
         """Input is expected to be of size [seqlen x bsz]."""
         # recompute/expand embeddings if needed
         seq_len, bsz = input.size()
@@ -88,5 +90,5 @@ class SinusoidalPositionalEmbedding(nn.Module):
             # positions is the same for every token when decoding a single step
             return weights[self.padding_idx + seq_len, :].expand(1, bsz, -1)
 
-        positions = make_positions(input.data, self.padding_idx, self.left_pad)
+        positions = make_positions(input.data, self.padding_idx, self.left_pad, is_short=is_short)
         return weights.index_select(0, positions.view(-1)).view(seq_len, bsz, -1)

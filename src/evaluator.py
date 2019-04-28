@@ -51,21 +51,72 @@ class EvaluatorMT(object):
             dico = self.data['dico'][lang]
             self.bpe_end.append(np.array([not dico[i].endswith('@@') for i in range(dico.__len__())]))
 
-    def eval_rythm(self, batch_ids):
+    def double_para(self, batch_ids,lens,lang_id, do_pad=False, do_bos=False):
+        slen, bs = batch_ids.shape
+        if do_pad or do_bos:
+            end_sent_2_idx = ((7+1)*1+7)*2-1 #29
+            end_sent_4_idx = ((7+1)*3+7)*2-1 #61
+            # batch_ids[end_sent_2_idx,:]=self.params.blank_index
+            batch_ids[end_sent_4_idx,:]=self.params.blank_index
+            batch_ids[end_sent_4_idx-3,:]=self.params.blank_index
+            # logger.info(batch_ids[28:31,:])
+            # logger.info(batch_ids[60:63,:])
+        else:
+            end_sent_2_idx = (7+1)*1+7
+            end_sent_4_idx = (7+1)*3+7
+            # batch_ids[end_sent_2_idx,:]=self.params.blank_index
+            batch_ids[end_sent_4_idx-2:end_sent_4_idx+1,:]=self.params.blank_index
+        # encode / decode / generate
+        encoded = self.encoder(batch_ids, lens, lang_id)
+        max_len = self.params.max_len[lang_id]
+        batch_ids, lens, _ = self.decoder.generate(encoded, lang_id, max_len=max_len)
+        return batch_ids,lens
+
+    def eval_rythm(self, batch_ids, do_pad=False, do_bos=False):
         correct=0
         ntcount=0
         batch_ids = batch_ids.cpu().detach().numpy()
         unk_index = self.params.unk_index
+        pad_index = self.params.pad_index
+        sos_index = self.params.sos_index
+
+        # logger.info('abc')
+        # logger.info(batch_ids[0:12,0:12])
+        # logger.info(batch_ids.shape)
+
+        tmp_sents = []
+        if do_pad:
+            slen, bs = batch_ids.shape
+            for i in range(bs):
+                tmp_sent = batch_ids[:,i]
+                tmp_sents.append(tmp_sent[tmp_sent!=pad_index])
+            batch_ids = np.zeros([len(tmp_sents),len(max(tmp_sents,key = lambda x: len(x)))])
+            for i,j in enumerate(tmp_sents):
+                batch_ids[i][0:len(j)] = j
+            batch_ids = batch_ids.T
+
+        if do_bos:
+            slen, bs = batch_ids.shape
+            for i in range(bs):
+                tmp_sent = batch_ids[:,i]
+                tmp_sents.append(tmp_sent[tmp_sent!=sos_index])
+            batch_ids = np.zeros([len(tmp_sents),len(max(tmp_sents,key = lambda x: len(x)))])
+            for i,j in enumerate(tmp_sents):
+                batch_ids[i][0:len(j)] = j
+            batch_ids = batch_ids.T
+            
+        # logger.info(batch_ids[0:12,0:12])
+        # logger.info(batch_ids.shape)
 
         if batch_ids.shape[0]>33:
-            end_sent_2_toks = batch_ids[15,:]
-            end_sent_4_toks = batch_ids[31,:]
+            end_sent_2_toks = batch_ids[(7+1)*1+7,:]
+            end_sent_4_toks = batch_ids[(7+1)*3+7,:]
             for idx in range(batch_ids.shape[1]):
                 end_sent_2_tok = [end_sent_2_toks[idx]]
                 end_sent_4_tok = [end_sent_4_toks[idx]]
                 rythms_2 = self.dico['pm'].convert_ids_to_rythms(end_sent_2_tok)[0]
                 rythms_4 = self.dico['pm'].convert_ids_to_rythms(end_sent_4_tok)[0]
-                if (0 in rythms_2) or (0 in rythms_4) or (end_sent_2_tok==unk_index) or (end_sent_4_tok==unk_index):
+                if (pad_index in rythms_2) or (pad_index in rythms_4) or (end_sent_2_tok==unk_index) or (end_sent_4_tok==unk_index):
                     ntcount += 1
                 else:
                     tmp=0
@@ -193,8 +244,8 @@ class EvaluatorMT(object):
             total_, correct_ = self.get_blank_acc(x_gold, x_pred, x_blank)
             total += total_
             correct += correct_
-            txt_blank = convert_to_text(x_blank, l_blank, self.dico[lang], lang_id, self.params)
-            txt_pred = convert_to_text(x_pred, l_pred, self.dico[lang], lang_id, self.params)
+            txt_blank = convert_to_text(x_blank, l_blank, self.dico[lang], lang_id, self.params, do_pad=False, do_bos=False)
+            txt_pred = convert_to_text(x_pred, l_pred, self.dico[lang], lang_id, self.params, do_pad=False, do_bos=False)
             txt_all = []
             for i in range(len(txt_blank)):
                 txt_all.append(txt_blank[i] + '\t###\t' + txt_pred[i])
@@ -262,6 +313,7 @@ class EvaluatorMT(object):
 
         # hypothesis
         txt = []
+        txt_pad = []
 
         # for perplexity
         loss_fn2 = nn.CrossEntropyLoss(weight=self.decoder.loss_fn[lang2_id].weight, size_average=False)
@@ -288,8 +340,9 @@ class EvaluatorMT(object):
             # decoded = self.decoder(encoded, sent2[:-1], lang_id=lang2_id, use_lens=params.use_lens, lens=len2.to(device))
             max_len = self.params.max_len[lang2_id]
             sent2_, len2_, _ = self.decoder.generate(encoded, lang2_id, max_len=max_len)
+            sent2_, len2_ = self.double_para(sent2_, len2_, lang2_id, do_pad=self.params.do_pad, do_bos=self.params.do_bos)
 
-            a, b = self.eval_rythm(sent2_)
+            a, b = self.eval_rythm(sent2_, do_pad=self.params.do_pad, do_bos=self.params.do_bos)
             rytm_correct += a 
             rytm_ntcount += b
             rytm_total += sent1.shape[1]
@@ -299,15 +352,20 @@ class EvaluatorMT(object):
             count += (len2 - 1).sum().item()  # skip BOS word
 
             # convert to text
-            txt.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params))
+            txt.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params, do_pad=self.params.do_pad, do_bos=self.params.do_bos))
+            txt_pad.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params, do_pad=False, do_bos=False))
 
         # hypothesis / reference paths
         hyp_name = 'hyp{0}.{1}-{2}.{3}.txt'.format(scores['epoch'], lang1, lang2, data_type)
         hyp_path = os.path.join(params.dump_path, hyp_name)
+        hyp_name_pad = 'hyp{0}.{1}-{2}.{3}pad.txt'.format(scores['epoch'], lang1, lang2, data_type)
+        hyp_path_pad = os.path.join(params.dump_path, hyp_name_pad)
 
         # export sentences to hypothesis file / restore BPE segmentation
         with open(hyp_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(txt) + '\n')
+        with open(hyp_path_pad, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(txt_pad) + '\n')
         # restore_segmentation(hyp_path)
 
         if bleu_eval:
@@ -375,7 +433,8 @@ class EvaluatorMT(object):
             # decoded = self.decoder(encoded, sent3[:-1], lang_id=lang3_id, use_lens=params.use_lens, lens=len3.to(device))
             max_len = self.params.max_len[lang3_id]
             sent3_, len3_, _ = self.decoder.generate(encoded, lang3_id, max_len=max_len)
-            a, b = self.eval_rythm(sent3_)
+
+            a, b = self.eval_rythm(sent3_, do_pad=self.params.do_pad, do_bos=self.params.do_bos)
             rytm_correct += a 
             rytm_ntcount += b
             rytm_total += sent1.shape[1]
@@ -385,8 +444,8 @@ class EvaluatorMT(object):
             count += (len3 - 1).sum().item()  # skip BOS word
 
             # convert to text
-            txt2.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params))
-            txt3.extend(convert_to_text(sent3_, len3_, self.dico[lang3], lang3_id, self.params))
+            txt2.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params, do_pad=self.params.do_pad, do_bos=self.params.do_bos))
+            txt3.extend(convert_to_text(sent3_, len3_, self.dico[lang3], lang3_id, self.params, do_pad=self.params.do_pad, do_bos=self.params.do_bos))
 
 
         # hypothesis / reference paths
@@ -509,14 +568,15 @@ class EvaluatorMT(object):
             encoded = self.encoder(sent1, len1, lang1_id)
             max_len = self.params.max_len[lang2_id]
             sent2_, len2_, _ = self.decoder.generate(encoded, lang2_id, max_len=max_len)
+            sent2_, len2_ = self.double_para(sent2_, len2_, lang2_id, do_pad=self.params.do_pad, do_bos=self.params.do_bos)
 
-            a, b = self.eval_rythm(sent2_)
+            a, b = self.eval_rythm(sent2_, do_pad=self.params.do_pad, do_bos=self.params.do_bos)
             rytm_correct += a 
             rytm_ntcount += b
             rytm_total += sent1.shape[1]
 
             # convert to text
-            txt.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params))
+            txt.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params, do_pad=self.params.do_pad, do_bos=self.params.do_bos))
 
         # hypothesis / reference paths
         hyp_name = 'hyp{0}.{1}-{2}.{3}.txt'.format(scores['epoch'], lang1, lang2, data_type)
@@ -577,13 +637,14 @@ def eval_moses_bleu(ref, hyp):
         return -1
 
 
-def convert_to_text(batch, lengths, dico, lang_id, params):
+def convert_to_text(batch, lengths, dico, lang_id, params, do_pad=False, do_bos=False):
     """
     Convert a batch of sentences to a list of text sentences.
     """
     batch = batch.cpu().numpy()
     lengths = lengths.cpu().numpy()
     bos_index = params.bos_index[lang_id]
+    lang = params.id2lang[lang_id]
 
     slen, bs = batch.shape
     assert lengths.max() == slen and lengths.shape[0] == bs
@@ -591,15 +652,73 @@ def convert_to_text(batch, lengths, dico, lang_id, params):
     assert (batch == params.eos_index).sum() == bs
     sentences = []
 
-    for j in range(bs):
-        words = []
-        for k in range(1, lengths[j]):
-            if batch[k, j] == params.eos_index:
-                break
-            token = dico[batch[k, j]]
-            if token.startswith('##'):
-                # logger.warning('Impossible !!! This code is not ready for this yet at training. ask Zhichao for more')
-                token=token[2:]
-            words.append(token)
-        sentences.append("".join(words))
+    # for j in range(bs):
+    #     words = []
+    #     tmp_idcs = batch[:, j]
+    #     tmp_idcs = np.append(tmp_idcs,[-1,0,0])
+    #     # logger.info(tmp_idcs)
+    #     # logger.info(len(tmp_idcs))
+    #     alist= zip(tmp_idcs[1::4], tmp_idcs[2::4], tmp_idcs[3::4], tmp_idcs[4::4])
+    #     for a,b,c,d in alist:
+    #         if a == params.eos_index:
+    #             break
+    #         if a != 0:
+    #             token = dico[a]
+    #             if token.startswith('##'):
+    #                 # logger.warning('Impossible !!! This code is not ready for this yet at training. ask Zhichao for more')
+    #                 token=token[2:]
+    #             words.append(token)
+    #         if b == params.eos_index:
+    #             break
+    #         if b != 0:
+    #             token = dico[b]
+    #             if token.startswith('##'):
+    #                 # logger.warning('Impossible !!! This code is not ready for this yet at training. ask Zhichao for more')
+    #                 token=token[2:]
+    #             words.append(token)
+    #     sentences.append("".join(words))
+
+    if do_pad and lang=='pm':
+        for j in range(bs):
+            words = []
+            for k in range(1, lengths[j]):
+                tmp_idx = batch[k, j]
+                if tmp_idx == params.eos_index:
+                    break
+                if tmp_idx != params.pad_index:
+                    token = dico[tmp_idx]
+                    if token.startswith('##'):
+                        # logger.warning('Impossible !!! This code is not ready for this yet at training. ask Zhichao for more')
+                        token=token[2:]
+                    words.append(token)
+            sentences.append("".join(words))
+    elif do_bos and lang=='pm':
+        for j in range(bs):
+            words = []
+            for k in range(1, lengths[j]):
+                tmp_idx = batch[k, j]
+                if tmp_idx == params.eos_index:
+                    break
+                if tmp_idx != params.sos_index:
+                    token = dico[tmp_idx]
+                    if token.startswith('##'):
+                        # logger.warning('Impossible !!! This code is not ready for this yet at training. ask Zhichao for more')
+                        token=token[2:]
+                    words.append(token)
+            sentences.append("".join(words))
+    else:
+        for j in range(bs):
+            words = []
+            for k in range(1, lengths[j]):
+                tmp_idx = batch[k, j]
+                if tmp_idx == params.eos_index:
+                    break
+                token = dico[tmp_idx]
+                if token.startswith('##'):
+                    # logger.warning('Impossible !!! This code is not ready for this yet at training. ask Zhichao for more')
+                    token=token[2:]
+                words.append(token)
+            sentences.append("".join(words))
+
+
     return sentences

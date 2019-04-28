@@ -119,6 +119,7 @@ class TrainerMT(MultiprocessingEventLoop):
             self.stats['ml_costs_%s_%s_%s' % (lang1, lang2, lang3)] = []
             self.stats['rl_costs_ap_%s_%s_%s' % (lang1, lang2, lang3)] = []
             self.stats['rl_costs_ar_%s_%s_%s' % (lang1, lang2, lang3)] = []
+            self.stats['rl_costs_cv_%s_%s_%s' % (lang1, lang2, lang3)] = []
         for lang in params.langs:
             self.stats['lme_costs_%s' % lang] = []
             self.stats['lmd_costs_%s' % lang] = []
@@ -142,6 +143,13 @@ class TrainerMT(MultiprocessingEventLoop):
         parse_lambda_config(params, 'lambda_xe_otfa')
         parse_lambda_config(params, 'lambda_dis')
         parse_lambda_config(params, 'lambda_lm')
+
+        # init rl loss function
+        if params.use_rl:
+            lang_swid = params.lang2id['sw']
+            self.loss_fn_no_mean_sw_pm_sw = init_loss_rl_fn(self.decoder.loss_fn[lang_swid].weight)
+            lang_pmid = params.lang2id['pm']
+            self.loss_fn_no_mean_pm_sw_pm = init_loss_rl_fn(self.decoder.loss_fn[lang_pmid].weight)
 
     def init_bpe(self):
         """
@@ -727,7 +735,7 @@ class TrainerMT(MultiprocessingEventLoop):
             samples = torch.from_numpy(get_samples(scores)).to(device)
             bases = torch.from_numpy(get_bases(scores)).to(device)
             # rl loss anti plagiarism
-            rl_loss_ap_unweighted = loss_fn_no_mean(scores.view(-1, n_words3), samples.view(-1))
+            rl_loss_ap_unweighted = self.loss_fn_no_mean_sw_pm_sw(scores.view(-1, n_words3), samples.view(-1))
             weights_ap = torch.Tensor([0]).to(device)
             if reward_gamma_ap > 0:
                 weights_ap = (get_weights_ap(bases, samples, sent2[1:]) * torch.Tensor([reward_gamma_ap])).to(device)
@@ -735,7 +743,7 @@ class TrainerMT(MultiprocessingEventLoop):
             self.stats['rl_costs_ap_%s_%s_%s' % direction].append(rl_loss_ap.item())
             final_loss += rl_loss_ap
             # rl loss anti repetition
-            rl_loss_ar_unweighted = loss_fn_no_mean(scores.view(-1, n_words3), bases.view(-1))
+            rl_loss_ar_unweighted = self.loss_fn_no_mean_sw_pm_sw(scores.view(-1, n_words3), bases.view(-1))
             weights_ar = torch.Tensor([0]).to(device)
             if reward_type_ar != 'none' and reward_gamma_ar > 0:
                 weights_ar = (get_weights_ar(bases, reward_thresh_ar, reward_type_ar) * torch.Tensor([reward_gamma_ar])).to(device)
@@ -747,8 +755,8 @@ class TrainerMT(MultiprocessingEventLoop):
             samples = torch.from_numpy(get_samples(scores)).to(device)
             bases = torch.from_numpy(get_bases(scores)).to(device)
             # rl loss coverage
-            rl_loss_cv_unweighted = loss_fn_no_mean(scores.view(-1, n_words3), samples.view(-1))
-            weights_cv = (get_weights_cv(bases, samples, sent1_abs[1:]) * torch.Tensor([reward_gamma_ap])).to(device)
+            rl_loss_cv_unweighted = self.loss_fn_no_mean_pm_sw_pm(scores.view(-1, n_words3), samples.view(-1))
+            weights_cv = (get_weights_cv(bases, samples, sent2[1:], len2) * torch.Tensor([reward_gamma_cv])).to(device)
             rl_loss_cv = torch.mean(rl_loss_cv_unweighted * weights_cv)
             self.stats['rl_costs_cv_%s_%s_%s' % direction].append(rl_loss_cv.item())
             final_loss += rl_loss_cv
@@ -883,6 +891,8 @@ class TrainerMT(MultiprocessingEventLoop):
                     mean_loss.append(('RL_COSTS_AP_%s' % lang1, 'rl_costs_ap_%s_%s_%s' % (lang1, lang2, lang3)))
                 if len(self.stats['rl_costs_ar_%s_%s_%s' % (lang1, lang2, lang3)])!=0:
                     mean_loss.append(('RL_COSTS_AR_%s' % lang1, 'rl_costs_ar_%s_%s_%s' % (lang1, lang2, lang3)))
+                if len(self.stats['rl_costs_cv_%s_%s_%s' % (lang1, lang2, lang3)]) != 0:
+                    mean_loss.append(('RL_COSTS_CV_%s' % lang1, 'rl_costs_cv_%s_%s_%s' % (lang1, lang2, lang3)))
             for lang in self.params.langs:
                 mean_loss.append(('LME-%s' % lang, 'lme_costs_%s' % lang))
                 mean_loss.append(('LMD-%s' % lang, 'lmd_costs_%s' % lang))

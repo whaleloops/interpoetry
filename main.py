@@ -219,6 +219,8 @@ def get_parser():
                         help="Reload a pre-trained decoder")
     parser.add_argument("--reload_dis", type=bool_flag, default=False,
                         help="Reload a pre-trained discriminator")
+    parser.add_argument("--n_total_iter", type=int, default=0,
+                        help="Reload a n_total_iter")
     # freeze network parameters
     parser.add_argument("--freeze_enc_emb", type=bool_flag, default=False,
                         help="Freeze encoder embeddings")
@@ -250,6 +252,15 @@ def get_parser():
                         help="weight of coverage loss")
     parser.add_argument("--use_lens", type=bool, default=False,
                         help="whether to use len as input")
+    parser.add_argument("--double_position", type=bool, default=False,
+                        help="whether to double positional encoding when input is poem")
+    parser.add_argument("--do_pad", type=bool, default=False,
+                        help="whether to do padding when input is poem")
+    parser.add_argument("--pad_weight", type=float, default=0.0,
+                        help="weight of padding when loss is calculated")
+    parser.add_argument("--do_bos", type=bool, default=False,
+                        help="whether to do padding when input is poem")
+
     # summary
     parser.add_argument("--use_summary", type=bool, default=False,
                         help="simply use summary as replacement for long input sentences")
@@ -288,7 +299,7 @@ def main(params):
 
     # evaluation mode
     if params.eval_only:
-        scores = evaluator.run_all_evals(0)
+        scores = evaluator.run_all_evals(0, params)
         # print / JSON log
         for k, v in scores.items():
             logger.info('%s -> %.6f' % (k, v))
