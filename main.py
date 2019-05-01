@@ -260,6 +260,8 @@ def get_parser():
                         help="weight of padding when loss is calculated")
     parser.add_argument("--do_bos", type=bool, default=False,
                         help="whether to do padding when input is poem")
+    parser.add_argument("--do_sep", type=bool, default=False,
+                        help="whether to do padding when input is poem")
 
     # summary
     parser.add_argument("--use_summary", type=bool, default=False,

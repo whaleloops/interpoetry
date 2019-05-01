@@ -94,7 +94,7 @@ class BertTokenizer(object):
 
         if os.path.exists(tone_file):
             print ('tone vocab loaded')
-            self.tones_to_ids = load_vocab(vocab_file)
+            self.tones_to_ids = load_vocab(tone_file)
             self.ids_to_tones = collections.OrderedDict(
                 [(ids, ton) for ton, ids in self.tones_to_ids.items()])
         self.basic_tokenizer = BasicTokenizer(do_lower_case=do_lower_case,

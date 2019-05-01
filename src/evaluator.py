@@ -51,9 +51,10 @@ class EvaluatorMT(object):
             dico = self.data['dico'][lang]
             self.bpe_end.append(np.array([not dico[i].endswith('@@') for i in range(dico.__len__())]))
 
-    def double_para(self, batch_ids,lens,lang_id, do_pad=False, do_bos=False):
+    def double_para(self, batch_ids,lens,lang_id, do_pad=False, do_bos=False, do_sep=False):
+        batch_ids = batch_ids.clone()
         slen, bs = batch_ids.shape
-        if do_pad or do_bos:
+        if do_pad or do_bos or do_sep:
             end_sent_2_idx = ((7+1)*1+7)*2-1 #29
             end_sent_4_idx = ((7+1)*3+7)*2-1 #61
             # batch_ids[end_sent_2_idx,:]=self.params.blank_index
@@ -72,13 +73,14 @@ class EvaluatorMT(object):
         batch_ids, lens, _ = self.decoder.generate(encoded, lang_id, max_len=max_len)
         return batch_ids,lens
 
-    def eval_rythm(self, batch_ids, do_pad=False, do_bos=False):
+    def eval_rythm(self, batch_ids, do_pad=False, do_bos=False, do_sep=False):
         correct=0
         ntcount=0
         batch_ids = batch_ids.cpu().detach().numpy()
         unk_index = self.params.unk_index
         pad_index = self.params.pad_index
         sos_index = self.params.sos_index
+        sep_index = self.params.sep_index
 
         # logger.info('abc')
         # logger.info(batch_ids[0:12,0:12])
@@ -104,7 +106,17 @@ class EvaluatorMT(object):
             for i,j in enumerate(tmp_sents):
                 batch_ids[i][0:len(j)] = j
             batch_ids = batch_ids.T
-            
+
+        if do_sep:
+            slen, bs = batch_ids.shape
+            for i in range(bs):
+                tmp_sent = batch_ids[:,i]
+                tmp_sents.append(tmp_sent[tmp_sent!=sep_index])
+            batch_ids = np.zeros([len(tmp_sents),len(max(tmp_sents,key = lambda x: len(x)))])
+            for i,j in enumerate(tmp_sents):
+                batch_ids[i][0:len(j)] = j
+            batch_ids = batch_ids.T
+
         # logger.info(batch_ids[0:12,0:12])
         # logger.info(batch_ids.shape)
 
@@ -244,8 +256,8 @@ class EvaluatorMT(object):
             total_, correct_ = self.get_blank_acc(x_gold, x_pred, x_blank)
             total += total_
             correct += correct_
-            txt_blank = convert_to_text(x_blank, l_blank, self.dico[lang], lang_id, self.params, do_pad=False, do_bos=False)
-            txt_pred = convert_to_text(x_pred, l_pred, self.dico[lang], lang_id, self.params, do_pad=False, do_bos=False)
+            txt_blank = convert_to_text(x_blank, l_blank, self.dico[lang], lang_id, self.params, do_pad=False, do_bos=False, do_sep=False)
+            txt_pred = convert_to_text(x_pred, l_pred, self.dico[lang], lang_id, self.params, do_pad=False, do_bos=False, do_sep=False)
             txt_all = []
             for i in range(len(txt_blank)):
                 txt_all.append(txt_blank[i] + '\t###\t' + txt_pred[i])
@@ -314,9 +326,14 @@ class EvaluatorMT(object):
         # hypothesis
         txt = []
         txt_pad = []
+        txt_tone_enh = []
 
         # for perplexity
-        loss_fn2 = nn.CrossEntropyLoss(weight=self.decoder.loss_fn[lang2_id].weight, size_average=False)
+        loss_weight = self.decoder.loss_fn[lang2_id].weight
+        loss_weight[params.sos_index] = 0
+        loss_weight[params.sep_index] = 0
+        loss_fn2 = nn.CrossEntropyLoss(weight=loss_weight, size_average=False)
+
         n_words2 = self.params.n_words[lang2_id]
         rytm_correct = 0
         rytm_ntcount = 0
@@ -340,25 +357,31 @@ class EvaluatorMT(object):
             # decoded = self.decoder(encoded, sent2[:-1], lang_id=lang2_id, use_lens=params.use_lens, lens=len2.to(device))
             max_len = self.params.max_len[lang2_id]
             sent2_, len2_, _ = self.decoder.generate(encoded, lang2_id, max_len=max_len)
-            sent2_, len2_ = self.double_para(sent2_, len2_, lang2_id, do_pad=self.params.do_pad, do_bos=self.params.do_bos)
+            sent2_enh, len2_enh = self.double_para(sent2_, len2_, lang2_id, do_pad=self.params.do_pad, do_bos=self.params.do_bos, do_sep=self.params.do_sep)
 
-            a, b = self.eval_rythm(sent2_, do_pad=self.params.do_pad, do_bos=self.params.do_bos)
+            a, b = self.eval_rythm(sent2_, do_pad=self.params.do_pad, do_bos=self.params.do_bos, do_sep=self.params.do_sep)
             rytm_correct += a 
             rytm_ntcount += b
             rytm_total += sent1.shape[1]
 
             # cross-entropy loss
             xe_loss += loss_fn2(decoded.view(-1, n_words2), sent2[1:].view(-1)).item()
-            count += (len2 - 1).sum().item()  # skip BOS word
+            count_dec = 0
+            if params.do_bos:
+                count_dec = (sent2_==params.sos_index).sum().item()
+            if params.do_sep:
+                count_dec = (sent2_==params.sep_index).sum().item()
+            count += (len2 - 1).sum().item()-count_dec  # skip BOS word
+            
 
             # convert to text
-            txt.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params, do_pad=self.params.do_pad, do_bos=self.params.do_bos))
-            txt_pad.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params, do_pad=False, do_bos=False))
-
+            txt.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params, do_pad=self.params.do_pad, do_bos=self.params.do_bos, do_sep=self.params.do_sep))
+            txt_pad.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params, do_pad=False, do_bos=False, do_sep=False))
+            txt_tone_enh.extend(convert_to_text(sent2_enh, len2_enh, self.dico[lang2], lang2_id, self.params, do_pad=self.params.do_pad, do_bos=self.params.do_bos, do_sep=self.params.do_sep))
         # hypothesis / reference paths
         hyp_name = 'hyp{0}.{1}-{2}.{3}.txt'.format(scores['epoch'], lang1, lang2, data_type)
         hyp_path = os.path.join(params.dump_path, hyp_name)
-        hyp_name_pad = 'hyp{0}.{1}-{2}.{3}pad.txt'.format(scores['epoch'], lang1, lang2, data_type)
+        hyp_name_pad = 'hyp{0}.{1}-{2}.{3}.pad.txt'.format(scores['epoch'], lang1, lang2, data_type)
         hyp_path_pad = os.path.join(params.dump_path, hyp_name_pad)
 
         # export sentences to hypothesis file / restore BPE segmentation
@@ -366,6 +389,12 @@ class EvaluatorMT(object):
             f.write('\n'.join(txt) + '\n')
         with open(hyp_path_pad, 'w', encoding='utf-8') as f:
             f.write('\n'.join(txt_pad) + '\n')
+
+        hyp_name = 'hyp{0}.{1}-{2}.{3}.tone_ehance.txt'.format(scores['epoch'], lang1, lang2, data_type)
+        hyp_path = os.path.join(params.dump_path, hyp_name)
+        # export sentences to hypothesis file / restore BPE segmentation
+        with open(hyp_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(txt_tone_enh) + '\n')
         # restore_segmentation(hyp_path)
 
         if bleu_eval:
@@ -407,7 +436,11 @@ class EvaluatorMT(object):
         txt3 = []
 
         # for perplexity
-        loss_fn3 = nn.CrossEntropyLoss(weight=self.decoder.loss_fn[lang3_id].weight, size_average=False)
+        loss_weight = self.decoder.loss_fn[lang3_id].weight
+        loss_weight[params.sos_index] = 0
+        loss_weight[params.sep_index] = 0
+        loss_fn3 = nn.CrossEntropyLoss(weight=loss_weight, size_average=False)
+        
         n_words3 = self.params.n_words[lang3_id]
         count = 0
         rytm_correct = 0
@@ -434,18 +467,23 @@ class EvaluatorMT(object):
             max_len = self.params.max_len[lang3_id]
             sent3_, len3_, _ = self.decoder.generate(encoded, lang3_id, max_len=max_len)
 
-            a, b = self.eval_rythm(sent3_, do_pad=self.params.do_pad, do_bos=self.params.do_bos)
+            a, b = self.eval_rythm(sent3_, do_pad=self.params.do_pad, do_bos=self.params.do_bos, do_sep=self.params.do_sep)
             rytm_correct += a 
             rytm_ntcount += b
             rytm_total += sent1.shape[1]
 
             # cross-entropy loss
             xe_loss += loss_fn3(decoded.view(-1, n_words3), sent3[1:].view(-1)).item()
-            count += (len3 - 1).sum().item()  # skip BOS word
+            count_dec = 0
+            if params.do_bos:
+                count_dec = (sent3_==params.sos_index).sum().item()
+            if params.do_sep:
+                count_dec = (sent3_==params.sep_index).sum().item()
+            count += (len3 - 1).sum().item()-count_dec  # skip BOS word
 
             # convert to text
-            txt2.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params, do_pad=self.params.do_pad, do_bos=self.params.do_bos))
-            txt3.extend(convert_to_text(sent3_, len3_, self.dico[lang3], lang3_id, self.params, do_pad=self.params.do_pad, do_bos=self.params.do_bos))
+            txt2.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params, do_pad=self.params.do_pad, do_bos=self.params.do_bos, do_sep=self.params.do_sep))
+            txt3.extend(convert_to_text(sent3_, len3_, self.dico[lang3], lang3_id, self.params, do_pad=self.params.do_pad, do_bos=self.params.do_bos, do_sep=self.params.do_sep))
 
 
         # hypothesis / reference paths
@@ -546,9 +584,14 @@ class EvaluatorMT(object):
 
         # hypothesis
         txt = []
+        txt_tone_enh = []
 
-        # for perplexity
-        loss_fn2 = nn.CrossEntropyLoss(weight=self.decoder.loss_fn[lang2_id].weight, size_average=False)
+        # for perplexityloss_weight
+        loss_weight = self.decoder.loss_fn[lang2_id].weight
+        loss_weight[params.sos_index] = 0
+        loss_weight[params.sep_index] = 0
+        loss_fn2 = nn.CrossEntropyLoss(weight=loss_weight, size_average=False)
+        
         n_words2 = self.params.n_words[lang2_id]
         rytm_correct = 0
         rytm_ntcount = 0
@@ -568,15 +611,16 @@ class EvaluatorMT(object):
             encoded = self.encoder(sent1, len1, lang1_id)
             max_len = self.params.max_len[lang2_id]
             sent2_, len2_, _ = self.decoder.generate(encoded, lang2_id, max_len=max_len)
-            sent2_, len2_ = self.double_para(sent2_, len2_, lang2_id, do_pad=self.params.do_pad, do_bos=self.params.do_bos)
+            sent2_enh, len2_enh = self.double_para(sent2_, len2_, lang2_id, do_pad=self.params.do_pad, do_bos=self.params.do_bos, do_sep=self.params.do_sep)
 
-            a, b = self.eval_rythm(sent2_, do_pad=self.params.do_pad, do_bos=self.params.do_bos)
+            a, b = self.eval_rythm(sent2_, do_pad=self.params.do_pad, do_bos=self.params.do_bos, do_sep=self.params.do_sep)
             rytm_correct += a 
             rytm_ntcount += b
             rytm_total += sent1.shape[1]
 
             # convert to text
-            txt.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params, do_pad=self.params.do_pad, do_bos=self.params.do_bos))
+            txt.extend(convert_to_text(sent2_, len2_, self.dico[lang2], lang2_id, self.params, do_pad=self.params.do_pad, do_bos=self.params.do_bos, do_sep=self.params.do_sep))
+            txt_tone_enh.extend(convert_to_text(sent2_enh, len2_enh, self.dico[lang2], lang2_id, self.params, do_pad=self.params.do_pad, do_bos=self.params.do_bos, do_sep=self.params.do_sep))
 
         # hypothesis / reference paths
         hyp_name = 'hyp{0}.{1}-{2}.{3}.txt'.format(scores['epoch'], lang1, lang2, data_type)
@@ -584,6 +628,11 @@ class EvaluatorMT(object):
         # export sentences to hypothesis file / restore BPE segmentation
         with open(hyp_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(txt) + '\n')
+        hyp_name = 'hyp{0}.{1}-{2}.{3}.tone_ehance.txt'.format(scores['epoch'], lang1, lang2, data_type)
+        hyp_path = os.path.join(params.dump_path, hyp_name)
+        # export sentences to hypothesis file / restore BPE segmentation
+        with open(hyp_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(txt_tone_enh) + '\n')
 
         # if bleu_eval:
         #     ref_path = self.params.mono_dataset[lang2][1].replace('pth','txt') #potential bug here
@@ -637,7 +686,7 @@ def eval_moses_bleu(ref, hyp):
         return -1
 
 
-def convert_to_text(batch, lengths, dico, lang_id, params, do_pad=False, do_bos=False):
+def convert_to_text(batch, lengths, dico, lang_id, params, do_pad=False, do_bos=False, do_sep=False):
     """
     Convert a batch of sentences to a list of text sentences.
     """
@@ -700,6 +749,20 @@ def convert_to_text(batch, lengths, dico, lang_id, params, do_pad=False, do_bos=
                 if tmp_idx == params.eos_index:
                     break
                 if tmp_idx != params.sos_index:
+                    token = dico[tmp_idx]
+                    if token.startswith('##'):
+                        # logger.warning('Impossible !!! This code is not ready for this yet at training. ask Zhichao for more')
+                        token=token[2:]
+                    words.append(token)
+            sentences.append("".join(words))
+    elif do_sep and lang=='pm':
+        for j in range(bs):
+            words = []
+            for k in range(1, lengths[j]):
+                tmp_idx = batch[k, j]
+                if tmp_idx == params.eos_index:
+                    break
+                if tmp_idx != params.sep_index:
                     token = dico[tmp_idx]
                     if token.startswith('##'):
                         # logger.warning('Impossible !!! This code is not ready for this yet at training. ask Zhichao for more')

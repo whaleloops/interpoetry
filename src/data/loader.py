@@ -31,8 +31,6 @@ def load_binarized(path, params):
     logger.info("Loading data from %s ..." % path)
     data = torch.load(path)
     data['positions'] = data['positions'].numpy()
-    if params.do_pad:
-        data['sentences'][data['sentences']==1] = params.pad_index
     logger.info("%i words (%i unique) in %i sentences. %i unknown words (%i unique)." % (
         len(data['sentences']) - len(data['positions']),
         len(data['dico']), len(data['positions']),
@@ -170,6 +168,14 @@ def load_para_data(params, data):
                 data2 = load_binarized(path.replace('XX', lang2), params)
                 set_parameters(params, data1['dico'])
                 set_parameters(params, data2['dico'])
+                if params.do_pad:
+                    data1['sentences'][data1['sentences']==1] = params.pad_index
+                if params.do_sep:
+                    data1['sentences'][data1['sentences']==1] = params.sep_index
+                if params.do_pad:
+                    data2['sentences'][data2['sentences']==1] = params.pad_index
+                if params.do_sep:
+                    data2['sentences'][data2['sentences']==1] = params.sep_index
 
                 # set / check dictionaries
                 if lang1 not in data['dico']:
@@ -254,6 +260,14 @@ def load_back_data(params, data):
         data2 = load_binarized(tgt_path, params)
         set_parameters(params, data1['dico'])
         set_parameters(params, data2['dico'])
+        if params.do_pad:
+            data1['sentences'][data1['sentences']==1] = params.pad_index
+        if params.do_sep:
+            data1['sentences'][data1['sentences']==1] = params.sep_index
+        if params.do_pad:
+            data2['sentences'][data2['sentences']==1] = params.pad_index
+        if params.do_sep:
+            data2['sentences'][data2['sentences']==1] = params.sep_index
 
         # set / check dictionaries
         if lang1 not in data['dico']:
@@ -309,6 +323,10 @@ def load_mono_data(params, data):
             # load data
             mono_data = load_binarized(path, params)
             set_parameters(params, mono_data['dico'])
+            if params.do_pad:
+                mono_data['sentences'][mono_data['sentences']==1] = params.pad_index
+            if params.do_sep:
+                mono_data['sentences'][mono_data['sentences']==1] = params.sep_index
 
             # set / check dictionary
             if lang not in data['dico']:
