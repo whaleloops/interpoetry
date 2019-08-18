@@ -11,7 +11,9 @@ def extract_test_bleu(id):
     pat_bleu3 = re.compile('- BLEU-3 : ([^ \n]+)')
     pat_bleu4 = re.compile('- BLEU-4 : ([^ \n]+)')
     pat_epoch = re.compile('Starting epoch ([^ \n]+) \.\.\.')
-    path_train_log = '../poem-prose_dump/' + id + '/train.log'
+    pat_ppl = re.compile('- ppl_sw_pm_test -> ([^ \n]+)')
+
+    path_train_log = id + '/train.log'
     bleu_dic = {}
     with open(path_train_log) as f_in:
         con = f_in.read()
@@ -28,9 +30,10 @@ def extract_test_bleu(id):
             bleu2 = pat_bleu2.search(sub_con).group(1)
             bleu3 = pat_bleu3.search(sub_con).group(1)
             bleu4 = pat_bleu4.search(sub_con).group(1)
+            ppl = pat_ppl.search(sub_con).group(1)
             # print(' ' + id + '-' + epoch + ' & ' + bleu1 + ' & ' + bleu2 + ' & ' + bleu3  + ' & ' +   bleu4 + ' & ' +  bleu  + '\\\\')
             # print(' \\hline')
-            bleu_dic[int(epoch)] = [float(bleu1), float(bleu2), float(bleu3), float(bleu4), float(bleu)]
+            bleu_dic[int(epoch)] = [float(bleu1), float(bleu2), float(bleu3), float(bleu4), float(bleu), float(ppl)]
         except:
             break
     return bleu_dic
@@ -42,17 +45,22 @@ def show_bleu_score(model_name, epoches):
     bleu_lis2 = []
     bleu_lis3 = []
     bleu_lis4 = []
+    ppl = []
     for i in epoches:
         bleu_lis1.append(bleu_dic[i][0])
         bleu_lis2.append(bleu_dic[i][1])
         bleu_lis3.append(bleu_dic[i][2])
         bleu_lis4.append(bleu_dic[i][3])
-        bleu_lis.append(bleu_dic[i][-1])
+        bleu_lis.append(bleu_dic[i][4])
+        ppl.append(bleu_dic[i][5])
     print(model_name + ' 1-gram bleu\t' + str(np.mean(bleu_lis1)))
     print(model_name + ' 2-gram bleu\t' + str(np.mean(bleu_lis2)))
     print(model_name + ' 3-gram bleu\t' + str(np.mean(bleu_lis3)))
     print(model_name + ' 4-gram bleu\t' + str(np.mean(bleu_lis4)))
     print(model_name + '\t\t bleu' + str(np.mean(bleu_lis)))
+    print(model_name + '\t\t ppl' + str(np.mean(ppl)))
+    print(model_name + '\t\t bleus' + str(bleu_lis))
+    print(model_name + '\t\t ppls' + str(ppl))
     print('')
 
 def get_inter_ratio(path):
@@ -79,7 +87,7 @@ def get_repetition_ratio(path):
     with open(path) as f_in_:
         lines = f_in_.readlines()
     repetition_ratio_lis = []
-    for i in range(19200):
+    for i in range(960):
         line = lines[i].strip()
         repetition_ratio = 1.0 - len(set(line)) / float(len(line))
         repetition_ratio_lis.append(repetition_ratio)
@@ -88,7 +96,7 @@ def get_repetition_ratio(path):
 def show_repe_ratio(model_name, epoches):
     repe_ratio_lis = []
     for j in epoches:
-        path = '../poem-prose_dump/' + model_name + '/hyp' + str(j) + '.pm-sw.valid.txt'
+        path = model_name + '/hyp' + str(j) + '.pm-sw.valid.txt'
         repe_ratio_lis.append(get_repetition_ratio(path))
     print('repetition_ratio for ' + model_name + ':\t' + str(np.mean(repe_ratio_lis)))
 
@@ -97,30 +105,67 @@ def main():
     # rl10 0-41 + anti copy loss
     # rl18 9-37 + anti repetition loss
     # rl22 9-54 + anti copy loss & anti repetition loss
-    epoches = np.array(range(30, 36))
-    model1 = 'caibase'
-    model2 = 'cairl10'
-    model3 = 'cairl18'
-    model4 = 'cairl22'
+    epoches = np.array(range(30, 35))
+    # epoches = np.array(range(25, 30))
+
+    model1 = '/mnt/nfs/work1/hongyu/pengshancai/exp/caibase'
+    model2 = '/mnt/nfs/work1/hongyu/pengshancai/exp/4902580'
+    model3 = './dumped/test/4948046'
+    # model3 = 'testlstm/4976233'
+    model4 = '/mnt/nfs/work1/hongyu/pengshancai/exp/4949781'
+    # model4 = 'testlstm/4976257'
+
     show_bleu_score(model1, epoches)
-    show_bleu_score(model2, epoches)
-    show_bleu_score(model3, epoches-8)
-    show_bleu_score(model4, epoches-8)
-
+    show_bleu_score(model2, epoches-8)
+    show_bleu_score(model3, epoches)
+    show_bleu_score(model4, epoches)
     show_repe_ratio(model1, epoches)
-    show_repe_ratio(model2, epoches)
-    show_repe_ratio(model3, epoches - 8)
-    show_repe_ratio(model4, epoches - 8)
-    print('repetition_ratio for real sanwen:\t' + str(get_repetition_ratio('./data/data_acc/sanwen.vl.txt')))
+    show_repe_ratio(model2, epoches-8)
+    show_repe_ratio(model3, epoches)
+    show_repe_ratio(model4, epoches)
 
-    show_inter_ratio(model1, epoches)
-    show_inter_ratio(model2, epoches)
-    show_inter_ratio(model3, epoches-8)
-    show_inter_ratio(model4, epoches-8)
+    # model1 = 'test/4977107'
+    # model2 = 'test/4982285'
+    # model3 = 'test/4982286'
+    # model4 = 'test/4948046'
+    # show_bleu_score(model1, epoches)
+    # show_bleu_score(model2, epoches-8)
+    # show_bleu_score(model3, epoches-4)
+    # show_bleu_score(model4, epoches)
 
 
+    # model1 = './dumped/test/4948046'
+    # model2 = './dumped/test/4977107'
+    # model3 = './dumped/test/4982285'
+    # model4 = './dumped/test/4982286'
+    # show_bleu_score(model1, epoches)
+    # show_bleu_score(model2, epoches)
+    # show_bleu_score(model3, epoches)
+    # show_bleu_score(model4, epoches)
+
+    # model1 = './dumped/test/caibase'
+    # model2 = './dumped/testlstm/4976233'
+    # model3 = './dumped/testlstm/4976257'
+    # show_bleu_score(model1, epoches)
+    # show_bleu_score(model2, epoches)
+    # show_bleu_score(model3, epoches)
+
+    
 
 
+    # show_repe_ratio(model1, epoches)
+    # show_repe_ratio(model2, epoches)
+    # show_repe_ratio(model3, epoches - 8)
+    # show_repe_ratio(model4, epoches - 8)
+    # print('repetition_ratio for real sanwen:\t' + str(get_repetition_ratio('./data/data_acc/sanwen.vl.txt')))
+
+    # show_inter_ratio(model1, epoches)
+    # show_inter_ratio(model2, epoches)
+    # show_inter_ratio(model3, epoches-8)
+    # show_inter_ratio(model4, epoches-8)
+
+
+main()
 
 
 

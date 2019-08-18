@@ -17,6 +17,7 @@ from src.evaluator import EvaluatorMT
 
 import torch
 
+import pickle
 
 def get_parser():
     # parse parameters
@@ -425,4 +426,6 @@ def main(params):
 if __name__ == '__main__':
     parser = get_parser()
     params = parser.parse_args()
-    main(params)
+    with open('./params.pkl', 'wb') as f_out:
+        pickle.dump(params, f_out)
+    # main(params)

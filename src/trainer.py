@@ -96,7 +96,7 @@ class TrainerMT(MultiprocessingEventLoop):
         # training variables
         self.best_metrics = {metric: -1e12 for metric in self.VALIDATION_METRICS}
         self.epoch = 0
-        self.n_total_iter = 0
+        self.n_total_iter = params.n_total_iter
         self.freeze_enc_emb = self.params.freeze_enc_emb
         self.freeze_dec_emb = self.params.freeze_dec_emb
 

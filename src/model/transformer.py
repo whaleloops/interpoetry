@@ -98,7 +98,7 @@ class TransformerEncoder(nn.Module):
             x = self.embed_scale * embed_input.view(slen * bs, -1).mm(embed_tokens.weight).view(slen, bs, self.embed_dim)
             # x = self.embed_scale * embed_input.view(slen * bs, -1)[:,0:768].view(slen, bs, self.embed_dim)
         x = x.detach() if self.freeze_enc_emb else x
-        x += self.embed_positions(src_tokens, is_short=False) #not bool(lang_id)
+        x += self.embed_positions(src_tokens)
         x = F.dropout(x, p=self.dropout, training=self.training)      
         # logger.info(src_tokens.shape) #TODO
         # logger.info(x.shape)
@@ -229,7 +229,7 @@ class TransformerDecoder(nn.Module):
         proj_layer = self.proj[lang_id]
 
         # embed positions
-        positions = self.embed_positions(prev_output_tokens, incremental_state, is_short=False) #not bool(lang_id)
+        positions = self.embed_positions(prev_output_tokens, incremental_state)
 
         # embed tokens and positions
         if incremental_state is not None:

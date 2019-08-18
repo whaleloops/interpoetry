@@ -56,6 +56,7 @@ class Encoder(nn.Module):
         self.share_enc = params.share_enc
         self.proj_mode = params.proj_mode
         self.pad_index = params.pad_index
+        self.unk_index = params.unk_index
         self.freeze_enc_emb = params.freeze_enc_emb
         assert not self.share_lang_emb or len(set(params.n_words)) == 1
         assert 0 <= self.share_enc <= self.n_enc_layers + int(self.proj_mode == 'proj')
@@ -423,7 +424,7 @@ def build_seq2seq_model(params, data, cuda=True):
     loss_fn = []
     for n_words in params.n_words:
         loss_weight = torch.FloatTensor(n_words).fill_(1)
-        loss_weight[params.pad_index] = 0
+        loss_weight[params.pad_index] = params.pad_weight #0
         loss_fn.append(nn.CrossEntropyLoss(loss_weight, size_average=True))
     decoder.loss_fn = nn.ModuleList(loss_fn)
 
