@@ -41,13 +41,6 @@ class TransformerEncoder(nn.Module):
         if args.share_lang_emb:
             assert len(set(args.n_words)) == 1
             logger.info("Sharing encoder input embeddings")
-            # if args.pretrained_emb != '':
-            #     logger.info("Using pretrained embeddings")
-            #     embeddings = torch.load(args.pretrained_emb)
-            #     layer_0 = nn.Embedding(embeddings.size(0), embeddings.size(1))
-            #     layer_0.weight = nn.Parameter(embeddings)
-            # else:
-            #     logger.info("Not using pretrained embeddings")
             layer_0 = Embedding(args.n_words[0], embed_dim, args.pad_index)
             embeddings = [layer_0 for _ in range(self.n_langs)]
         else:
@@ -100,7 +93,7 @@ class TransformerEncoder(nn.Module):
         x = x.detach() if self.freeze_enc_emb else x
         x += self.embed_positions(src_tokens)
         x = F.dropout(x, p=self.dropout, training=self.training)      
-        # logger.info(src_tokens.shape) #TODO
+        # logger.info(src_tokens.shape) #CHECKPOINT
         # logger.info(x.shape)
 
         # compute padding mask
@@ -349,6 +342,7 @@ class TransformerDecoder(nn.Module):
             if sample:
                 next_words = torch.multinomial((scores / temperature).exp(), 1).squeeze(1)
             else:
+                # get the next best if unk
                 best_idx2 = torch.topk(scores, 2)[1]  # bs, 2
                 mask_idx1 = best_idx2[:,0] == self.unk_index
                 next_words = best_idx2[:,0]

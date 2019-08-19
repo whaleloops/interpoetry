@@ -2,15 +2,6 @@
 import os
 
 
-# class Singleton(object):
-    
-#     _instance = None
-
-#     def __new__(class_, *args, **kwargs):
-#         if not class_._instance:
-#             class_._instance = object.__new__(class_, *args, **kwargs)
-#         return class_._instance
-
 
 def _get_vowel(pinyin):
     i = len(pinyin) - 1
@@ -62,14 +53,11 @@ def get_rhyme(pinyin):
 class PronDict(object):
 
     def __init__(self, pinyin_path):
-        # self.char_dict = CharDict() #TODO
         self._pron_dict = dict()
         with open(pinyin_path, 'r') as fin:
             for line in fin.readlines():
                 toks = line.strip().split()
                 ch = chr(int(toks[0], 16))
-                # if ch not in self.char_dict: #TODO
-                    # continue
                 self._pron_dict[ch] = []
                 for tok in toks[1 : ]:
                     self._pron_dict[ch].append((tok[:-1], int(tok[-1])))

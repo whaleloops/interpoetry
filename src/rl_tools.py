@@ -94,9 +94,6 @@ def reward_func_cv(pm_pred, sw, len_sw, n=1):
     return np.min([0, intersection_ratio2 - intersection_ratio1])
 
 
-
-
-
 def get_weights_ap(bases_in, samples_in, pm_golds):
     pm_golds = pm_golds.cpu().numpy()
     bases = bases_in.cpu().numpy()

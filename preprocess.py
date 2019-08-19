@@ -142,10 +142,10 @@ def get_data(input_sents, tokenizer, issanwen, dopmpad):
             if dopmpad:
                 ind_len = len(indexed)
                 indexed = np.array(indexed)
-                # sliced = list(range(2,ind_len+1,2))+list(range(2,ind_len+1,2))
-                # sliced = list(range(8,ind_len+1,8))*8 #TODOTODO
+                sliced = list(range(2,ind_len+1,2))+list(range(2,ind_len+1,2)) #TODO
+                # sliced = list(range(8,ind_len+1,8))*8 
                 # sliced = [3,8,11,16,19,24,27,32]*3+[5,13,21,29]*2
-                sliced = [5,8,13,16,21,24,29,32]*3+[2,10,18,26]*2
+                # sliced = [5,8,13,16,21,24,29,32]*3+[2,10,18,26]*2
                 # logger.info(ind)
                 # logger.info(indexed.shape)
                 indexed = np.insert(indexed, sliced, [PADDING_IDX]*ind_len)
@@ -174,8 +174,6 @@ def get_data(input_sents, tokenizer, issanwen, dopmpad):
                 length_in_count[-1] += 1
             else:
                 length_in_count[int(len(token_s)/10)] += 1
-        # else:
-        #     print("Short sentence in line %i. <=10" % line_count)
 
 
     # tensorize data
@@ -213,17 +211,6 @@ def get_data(input_sents, tokenizer, issanwen, dopmpad):
 # python preprocess.py data/vocab.txt data/jueju7_out abc juejue pmpad 7 
 # python preprocess.py data/vocab.txt data/poem7_out abc juejue pmpad 7
 # python preprocess.py data/vocab.txt data/poem_jueju7.txt  abc abc pmpad 7
-
-# mv data/poem7_out.tr.pth data/data_pad_4/jueju7_out.tr.pth
-# mv data/poem7_out.tr.txt data/data_pad_4/jueju7_out.tr.txt
-# mv data/poem7_out.tr.summary.txt data/data_pad_4/jueju7_out.tr.summary.txt
-# mv data/poem7_out.vl.pth data/data_pad_4/jueju7_out.vl.pth
-# mv data/poem7_out.vl.txt data/data_pad_4/jueju7_out.vl.txt
-# mv data/poem7_out.vl.summary.txt data/data_pad_4/jueju7_out.vl.summary.txt
-
-# mv data/poem_jueju7.pth data/data_pad_4/poem_jueju7_para.pm.pth
-# mv data/poem_jueju7.txt data/data_pad_4/poem_jueju7_para.pm.txt
-# mv data/poem_jueju7.txt.tr.summary.txt data/data_pad_4/poem_jueju7_para.pm.summary.txt.pm.txt
 
 if __name__ == '__main__':
 

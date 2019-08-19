@@ -483,7 +483,7 @@ class TrainerMT(MultiprocessingEventLoop):
             sent1, len1 = self.add_noise(sent1, len1, lang1_id)
         sent1, sent2 = sent1.to(device), sent2.to(device)
 
-        # logger.info('enc_dec_step') #TODO
+        # logger.info('enc_dec_step') #CHECKPOINT
         # logger.info(lang1)
         # logger.info(lang2)
         # logger.info(sent1)
@@ -718,7 +718,7 @@ class TrainerMT(MultiprocessingEventLoop):
             bos = torch.cuda.FloatTensor(1, bs, n_words2).zero_()
             bos[0, :, params.bos_index[lang2_id]] = 1
             sent2_input = torch.cat([bos, F.softmax(scores / backprop_temperature, -1)], 0)
-            # logger.info(sent2[0:2]) #TODO
+            # logger.info(sent2[0:2]) #CHECKPOINT
             # logger.info(sent2.shape)
             # logger.info(sent2_input[0:2])
             # logger.info(sent2_input.shape)
@@ -824,7 +824,7 @@ class TrainerMT(MultiprocessingEventLoop):
             bos = torch.cuda.FloatTensor(1, bs, n_words2).zero_()
             bos[0, :, params.bos_index[lang2_id]] = 1
             sent2_input = torch.cat([bos, F.softmax(scores / backprop_temperature, -1)], 0)
-            # logger.info(sent2[0:2]) #TODO
+            # logger.info(sent2[0:2]) #CHECKPOINT
             # logger.info(sent2.shape)
             # logger.info(sent2_input[0:2])
             # logger.info(sent2_input.shape)
@@ -1014,7 +1014,7 @@ class TrainerMT(MultiprocessingEventLoop):
         """
         Save the models periodically.
         """
-        if self.params.save_periodic and self.epoch % 4 == 0 and self.epoch > 0: #TODO: 20
+        if self.params.save_periodic and self.epoch % 4 == 0 and self.epoch > 0:
             self.save_model('periodic-%i' % self.epoch)
             logger.info("Periodic saved %i" % self.epoch)
 

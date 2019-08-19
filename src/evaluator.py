@@ -59,8 +59,6 @@ class EvaluatorMT(object):
             end_sent_4_idx = ((7+1)*3+7)*2-1 #61
             # batch_ids[end_sent_2_idx,:]=self.params.blank_index
             batch_ids[end_sent_4_idx-1:end_sent_4_idx+1,:]=self.params.blank_index
-            # logger.info(batch_ids[28:31,:])
-            # logger.info(batch_ids[60:63,:])
         else:
             end_sent_2_idx = (7+1)*1+7
             end_sent_4_idx = (7+1)*3+7
@@ -80,10 +78,6 @@ class EvaluatorMT(object):
         pad_index = self.params.pad_index
         sos_index = self.params.sos_index
         sep_index = self.params.sep_index
-
-        # logger.info('abc')
-        # logger.info(batch_ids[0:12,0:12])
-        # logger.info(batch_ids.shape)
 
         tmp_sents = []
         if do_pad:
@@ -115,9 +109,6 @@ class EvaluatorMT(object):
             for i,j in enumerate(tmp_sents):
                 batch_ids[i][0:len(j)] = j
             batch_ids = batch_ids.T
-
-        # logger.info(batch_ids[0:12,0:12])
-        # logger.info(batch_ids.shape)
 
         if batch_ids.shape[0]>33:
             end_sent_2_toks = batch_ids[(7+1)*1+7,:]
@@ -537,7 +528,6 @@ class EvaluatorMT(object):
 
         with torch.no_grad():
 
-            # lang1, lang2, lang3 = self.params.pivo_directions[0]
             # before_gen = time.time() 
             lang2='sw'
             lang3='pm'
@@ -545,7 +535,6 @@ class EvaluatorMT(object):
                 self.eval_transfer(lang2, lang3, data_type, scores, device, params, bleu_eval=False)
             # gen_time1 = time.time() - before_gen
 
-            # lang1, lang2, lang3 = self.params.pivo_directions[0]
             # before_gen = time.time() 
             lang2='sw'
             lang3='pm'
@@ -636,21 +625,6 @@ class EvaluatorMT(object):
         with open(hyp_path_enh, 'w', encoding='utf-8') as f:
             f.write('\n'.join(txt_tone_enh) + '\n')
 
-        # if bleu_eval:
-        #     ref_path = self.params.mono_dataset[lang2][1].replace('pth','txt') #potential bug here
-        #     print (ref_path)
-
-        #     # evaluate BLEU score
-        #     bleus = eval_moses_bleu(ref_path, hyp_path)
-        #     logger.info("BLEU %s %s : %f" % (hyp_path, ref_path, bleus[0]))
-        #     logger.info("BLEU-1 : %f" % (bleus[1]))
-        #     logger.info("BLEU-2 : %f" % (bleus[2]))
-        #     logger.info("BLEU-3 : %f" % (bleus[3]))
-        #     logger.info("BLEU-4 : %f" % (bleus[4]))
-
-        #     # update scores
-        #     scores['bleu_%s_%s_%s' % (lang1, lang2, data_type)] = float(bleus[0])
-
         logger.info("Rythem info: ")
         logger.info(rytm_ntcount)
         logger.info(rytm_total)
@@ -703,32 +677,6 @@ def convert_to_text(batch, lengths, dico, lang_id, params, do_pad=False, do_bos=
     assert (batch == params.eos_index).sum() == bs
     sentences = []
 
-    # for j in range(bs):
-    #     words = []
-    #     tmp_idcs = batch[:, j]
-    #     tmp_idcs = np.append(tmp_idcs,[-1,0,0])
-    #     # logger.info(tmp_idcs)
-    #     # logger.info(len(tmp_idcs))
-    #     alist= zip(tmp_idcs[1::4], tmp_idcs[2::4], tmp_idcs[3::4], tmp_idcs[4::4])
-    #     for a,b,c,d in alist:
-    #         if a == params.eos_index:
-    #             break
-    #         if a != 0:
-    #             token = dico[a]
-    #             if token.startswith('##'):
-    #                 # logger.warning('Impossible !!! This code is not ready for this yet at training. ask Zhichao for more')
-    #                 token=token[2:]
-    #             words.append(token)
-    #         if b == params.eos_index:
-    #             break
-    #         if b != 0:
-    #             token = dico[b]
-    #             if token.startswith('##'):
-    #                 # logger.warning('Impossible !!! This code is not ready for this yet at training. ask Zhichao for more')
-    #                 token=token[2:]
-    #             words.append(token)
-    #     sentences.append("".join(words))
-
     if do_pad and lang=='pm':
         for j in range(bs):
             words = []
@@ -739,7 +687,6 @@ def convert_to_text(batch, lengths, dico, lang_id, params, do_pad=False, do_bos=
                 if tmp_idx != params.pad_index:
                     token = dico[tmp_idx]
                     if token.startswith('##'):
-                        # logger.warning('Impossible !!! This code is not ready for this yet at training. ask Zhichao for more')
                         token=token[2:]
                     words.append(token)
             sentences.append("".join(words))
@@ -753,7 +700,6 @@ def convert_to_text(batch, lengths, dico, lang_id, params, do_pad=False, do_bos=
                 if tmp_idx != params.sos_index:
                     token = dico[tmp_idx]
                     if token.startswith('##'):
-                        # logger.warning('Impossible !!! This code is not ready for this yet at training. ask Zhichao for more')
                         token=token[2:]
                     words.append(token)
             sentences.append("".join(words))
@@ -767,7 +713,6 @@ def convert_to_text(batch, lengths, dico, lang_id, params, do_pad=False, do_bos=
                 if tmp_idx != params.sep_index:
                     token = dico[tmp_idx]
                     if token.startswith('##'):
-                        # logger.warning('Impossible !!! This code is not ready for this yet at training. ask Zhichao for more')
                         token=token[2:]
                     words.append(token)
             sentences.append("".join(words))
@@ -780,7 +725,6 @@ def convert_to_text(batch, lengths, dico, lang_id, params, do_pad=False, do_bos=
                     break
                 token = dico[tmp_idx]
                 if token.startswith('##'):
-                    # logger.warning('Impossible !!! This code is not ready for this yet at training. ask Zhichao for more')
                     token=token[2:]
                 words.append(token)
             sentences.append("".join(words))
