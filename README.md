@@ -17,7 +17,7 @@ Thanks to FacebookResearch for opensourcing [Phrase-Based & Neural Unsupervised 
 
 ## Download / preprocess data
 
-Quickroutes are provided to save time, you could only download [processed data](link here) and unzip in interpoetry folder. Then continue to [Train](https://github.com/whaleloops/interpoetry#train) section. However, if you are interested in detailed steps, please continue reading.
+Quickroutes are provided to save time, you could only download [processed data](https://umass-my.sharepoint.com/:f:/g/personal/zhichaoyang_umass_edu/EtxFUYdWDKtFnEK7Jt1WNnYBn7CR1iwZS5Zd66A1Q84j5Q?e=10VSHv) and unzip in interpoetry folder. Then continue to [Train](https://github.com/whaleloops/interpoetry#train) section. However, if you are interested in detailed steps, please continue reading.
 
 ### Vernaculars
 Training data are collected from 281 sanwens and fictions written by more than 40 famous Chinese authors (鲁迅, 金庸, 毕淑敏, 余秋雨, 张小娴, 温世仁 etc.). The dataset includes more than 500K sentences.
@@ -29,6 +29,8 @@ Classical poem data for training are collected from [here](https://github.com/ch
 TODO
 
 ### Preprocess
+
+Download all raw data [here](https://umass-my.sharepoint.com/:f:/g/personal/zhichaoyang_umass_edu/EjuB2kReBAdBmyojACZ7cYcBdxGvsrcWV3cjhBYkKORrwg?e=ntnXUt)
 
 Run with following commands to generate preprocessed sanwen data.
 ```
@@ -99,7 +101,7 @@ python main.py
 --rl_start_epoch 0 
 
 ## With
-MONO_DATASET='pm:./data/data_pad/jueju7_out.tr.pth,./data/data_pad/jueju7_out.vl.pth,,./data/data_pad/poem_jueju7_para.pm.pth;sw:./data/data_acc/sanwen.tr.pth,./data/data_acc/sanwen.vl.pth,./data/data/sanwen.te.pth,./data/data/poem_jueju7_para_translation.pth' 
+MONO_DATASET='pm:./data/data_pad/jueju7_out.tr.pth,./data/data_pad/jueju7_out.vl.pth,,./data/data_pad/poem_jueju7_para.pm.pth;sw:./data/data_pad/sanwen.tr.pth,./data/data_pad/sanwen.vl.pth,./data/data_pad/sanwen.te.pth,./data/data_pad/poem_jueju7_para.sw.pth' 
 PARA_DATASET='pm-sw:,,./data/data_pad/poem_jueju7_para.XX.pth'
 PRETRAINED='./data/word_embeddings_weight.pt'
 
