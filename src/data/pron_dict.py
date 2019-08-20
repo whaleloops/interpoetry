@@ -1,8 +1,6 @@
 # -*- coding:utf-8 -*-
 import os
 
-
-
 def _get_vowel(pinyin):
     i = len(pinyin) - 1
     if pinyin.endswith('N'):
