@@ -23,7 +23,7 @@ Quickroutes are provided to save time, you could only download [processed data](
 Training data are collected from 281 sanwens and fictions written by more than 40 famous Chinese authors (鲁迅, 金庸, 毕淑敏, 余秋雨, 张小娴, 温世仁 etc.). The dataset includes more than 500K short paragraphs. To form such paragraph, we pad sentences until it reaches no more than 130 words. See this short [example](link) for more detail.
 
 ### Poems
-Classical poem data for training are collected from [here](https://github.com/chinese-poetry/chinese-poetry). We further gather [seven-syllable Jueju](https://en.wikipedia.org/wiki/Qijue) from all Tang poems and Song poems . The dataset includes more than 270K seven-syllable Jueju. See this short [example](link) for more detail.
+Classical poem data for training are collected from [here](https://github.com/chinese-poetry/chinese-poetry). We further gather [seven-syllable Jueju](https://en.wikipedia.org/wiki/Qijue) from all Tang poems and Song poems. The dataset includes more than 270K seven-syllable Jueju. See this short [example](link) for more detail.
 
 ### Parallel data (poems and thier translation)
 TODO
@@ -35,26 +35,23 @@ After downloading raw data or creating your own data in the format of raw data, 
 preprocess.py will process raw data by:
 * splitting training and validation data 
 * checking if Jueju meets proper rythm constaint(押韵)
+* shrinking the length of sanwen input
 * padding Jueju 2 by 2 (see paper for more detail)
 * converting tokens to ids and save it as .pth file
 * matching vocab to rythm and save it as vocab_rytm.json
 
 Run with following commands to generate preprocessed sanwen data.
 ```
-python preprocess.py data/vocab.txt data/sanwen/sanwen sanwen sanwen nopmpad 7
-```
-or
-```
-python preprocess.py VOCAB_FILEPATH RAW_DATA_FILEPATH sanwen sanwen nopmpad 7
+VOCAB_FILEPATH = data/vocab.txt
+RAW_DATA_FILEPATH = data/sanwen/sanwen
+python preprocess.py $VOCAB_FILEPATH $RAW_DATA_FILEPATH sanwen sanwen nopmpad 7
 ```
 
 Run with following commands to generate preprocessed poems data.
 ```
-python preprocess.py data/vocab.txt data/jueju7_out juejue juejue pmpad 7 
-```
-or
-```
-python preprocess.py VOCAB_FILEPATH RAW_DATA_FILEPATH juejue juejue pmpad 7 
+VOCAB_FILEPATH = data/vocab.txt
+RAW_DATA_FILEPATH = data/jueju7_out
+python preprocess.py $VOCAB_FILEPATH $RAW_DATA_FILEPATH juejue juejue pmpad 7 
 ```
 
 Commands to process parallel data are similar. Replace RAW_DATA_FILEPATH to the actual file you would like to process.
