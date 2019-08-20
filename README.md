@@ -17,32 +17,47 @@ Thanks to FacebookResearch for opensourcing [Phrase-Based & Neural Unsupervised 
 
 ## Download / preprocess data
 
-Quickroutes are provided to save time, you could only download [processed data](https://umass-my.sharepoint.com/:f:/g/personal/zhichaoyang_umass_edu/EtxFUYdWDKtFnEK7Jt1WNnYBn7CR1iwZS5Zd66A1Q84j5Q?e=10VSHv) and unzip in interpoetry folder. Then continue to [Train](https://github.com/whaleloops/interpoetry#train) section. However, if you are interested in detailed steps, please continue reading.
+Quickroutes are provided to save time, you could only download [processed data](https://umass-my.sharepoint.com/:f:/g/personal/zhichaoyang_umass_edu/EtxFUYdWDKtFnEK7Jt1WNnYBn7CR1iwZS5Zd66A1Q84j5Q?e=10VSHv) and unzip in interpoetry folder. Then continue to [Train](https://github.com/whaleloops/interpoetry#train) section. However, if you are interested in detailed steps or would like to run on your own dataset, please download and unzip all raw data [here](https://umass-my.sharepoint.com/:f:/g/personal/zhichaoyang_umass_edu/EjuB2kReBAdBmyojACZ7cYcBdxGvsrcWV3cjhBYkKORrwg?e=ntnXUt), rename the folder as "data", and place it inside "interpoetry" folder.
 
 ### Vernaculars
-Training data are collected from 281 sanwens and fictions written by more than 40 famous Chinese authors (鲁迅, 金庸, 毕淑敏, 余秋雨, 张小娴, 温世仁 etc.). The dataset includes more than 500K sentences.
+Training data are collected from 281 sanwens and fictions written by more than 40 famous Chinese authors (鲁迅, 金庸, 毕淑敏, 余秋雨, 张小娴, 温世仁 etc.). The dataset includes more than 500K short paragraphs. To form such paragraph, we pad sentences until it reaches no more than 130 words. See this short [example](link) for more detail.
 
 ### Poems
-Classical poem data for training are collected from [here](https://github.com/chinese-poetry/chinese-poetry).
+Classical poem data for training are collected from [here](https://github.com/chinese-poetry/chinese-poetry). We further gather [seven-syllable Jueju](https://en.wikipedia.org/wiki/Qijue) from all Tang poems and Song poems . The dataset includes more than 270K seven-syllable Jueju. See this short [example](link) for more detail.
 
 ### Parallel data (poems and thier translation)
 TODO
 
 ### Preprocess
 
-Download all raw data [here](https://umass-my.sharepoint.com/:f:/g/personal/zhichaoyang_umass_edu/EjuB2kReBAdBmyojACZ7cYcBdxGvsrcWV3cjhBYkKORrwg?e=ntnXUt)
+After downloading raw data or creating your own data in the format of raw data, you could start preprocessing.
+
+preprocess.py will process raw data by:
+* splitting training and validation data 
+* checking if Jueju meets proper rythm constaint(押韵)
+* padding Jueju 2 by 2 (see paper for more detail)
+* converting tokens to ids and save it as .pth file
+* matching vocab to rythm and save it as vocab_rytm.json
 
 Run with following commands to generate preprocessed sanwen data.
 ```
-python preprocess.py data/vocab.txt data/sanwen/sanwen sanwen abc nopmpad 7
+python preprocess.py data/vocab.txt data/sanwen/sanwen sanwen sanwen nopmpad 7
+```
+or
+```
+python preprocess.py VOCAB_FILEPATH RAW_DATA_FILEPATH sanwen sanwen nopmpad 7
 ```
 
 Run with following commands to generate preprocessed poems data.
 ```
-python preprocess.py data/vocab.txt data/jueju7_out abc juejue pmpad 7 
+python preprocess.py data/vocab.txt data/jueju7_out juejue juejue pmpad 7 
+```
+or
+```
+python preprocess.py VOCAB_FILEPATH RAW_DATA_FILEPATH juejue juejue pmpad 7 
 ```
 
-Commands to process parallel data are similar. Replace second param to the actual file you would like to process.
+Commands to process parallel data are similar. Replace RAW_DATA_FILEPATH to the actual file you would like to process.
 
 
 ## Train
@@ -131,7 +146,7 @@ Please cite the following if you find this repo useful.
 ```
 @inproceedings{yangcai2019interpoetry,
   title={Interpoetry: Generating Classical Chinese Poems from Vernacular Chinese},
-  author={Yang, Zhichao and Cai, Pengshan and ... TODO},
+  author={Yang, Zhichao and Cai, Pengshan and Sun, Maosong and Li, Fei and Feng, Weijiang and Chiu, Suet-Ying and Yu, Hong},
   booktitle = {Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
   year={2019}
 }
