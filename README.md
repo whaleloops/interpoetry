@@ -3,8 +3,6 @@
 This repository contains the original implementation of the unsupervised poem translation models presented in  
 [Interpoetry: Generating Classical Chinese Poems from Vernacular Chinese](link here) (EMNLP 2019). 
 
-![logo](./images/logo.png)
-
 A fancy demonstration could be found [here](https://pengshancai.github.io/interpoetry/).
 
 Thanks to FacebookResearch for opensourcing [Phrase-Based & Neural Unsupervised Machine Translation](https://github.com/facebookresearch/UnsupervisedMT) project.
