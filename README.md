@@ -17,13 +17,23 @@ Thanks to FacebookResearch for opensourcing [Phrase-Based & Neural Unsupervised 
 
 ## Download / preprocess data
 
-Quickroutes are provided to save time, you could only download [processed data](https://umass-my.sharepoint.com/:f:/g/personal/zhichaoyang_umass_edu/EtxFUYdWDKtFnEK7Jt1WNnYBn7CR1iwZS5Zd66A1Q84j5Q?e=10VSHv) and unzip in interpoetry folder. Then continue to [Train](https://github.com/whaleloops/interpoetry#train) section. However, if you are interested in detailed steps or would like to run on your own dataset, please download and unzip all raw data [here](https://umass-my.sharepoint.com/:f:/g/personal/zhichaoyang_umass_edu/EjuB2kReBAdBmyojACZ7cYcBdxGvsrcWV3cjhBYkKORrwg?e=ntnXUt), rename the folder as "data", and place it inside "interpoetry" folder.
+Quickroutes are provided to save time, you could only download processed data 
+(
+[BaiduYun](https://pan.baidu.com/s/1dpH7ikReKPz58IJvgJuwRA) with code: sxqt, 
+[GDrive](https://drive.google.com/file/d/1QCc2BACIgv4d5Q5jDMxM5iSC4hOIv-fU/view?usp=sharing)
+) 
+and unzip in interpoetry folder. Then continue to [Train](https://github.com/whaleloops/interpoetry#train) section. However, if you are interested in detailed steps or would like to run on your own dataset, please download and unzip all raw data 
+(
+[BaiduYun](https://pan.baidu.com/s/1jGl8eCKLWqUqhjWOjO74Pw) with code: wz7c,
+[GDrive](https://drive.google.com/file/d/1k1egojEqKV8ZwnbZLQYWajnUgQlv9dSz/view?usp=sharing)
+)
+, rename the folder as "data", and place it inside "interpoetry" folder.
 
 ### Vernaculars
-Training data are collected from 281 sanwens and fictions written by more than 40 famous Chinese authors (鲁迅, 金庸, 毕淑敏, 余秋雨, 张小娴, 温世仁 etc.). The dataset includes more than 500K short paragraphs. To form such paragraph, we pad sentences until it reaches no more than 130 words. See this short [example](link) for more detail.
+Training data are collected from 281 sanwens and fictions written by more than 40 famous Chinese authors (鲁迅, 金庸, 毕淑敏, 余秋雨, 张小娴, 温世仁 etc.). The dataset includes more than 500K short paragraphs. To form such paragraph, we pad sentences until it reaches no more than 130 words. See this short [example](sanwen_test) for more detail.
 
 ### Poems
-Classical poem data for training are collected from [here](https://github.com/chinese-poetry/chinese-poetry). We further gather [seven-syllable Jueju](https://en.wikipedia.org/wiki/Qijue) from all Tang poems and Song poems. The dataset includes more than 270K seven-syllable Jueju. See this short [example](link) for more detail.
+Classical poem data for training are collected from [here](https://github.com/chinese-poetry/chinese-poetry). We further gather [seven-syllable Jueju](https://en.wikipedia.org/wiki/Qijue) from all Tang poems and Song poems. The dataset includes more than 270K seven-syllable Jueju. See this short [example](poem_test) for more detail.
 
 ### Parallel data (poems and thier translation)
 TODO
@@ -119,6 +129,13 @@ PRETRAINED='./data/word_embeddings_weight.pt'
 
 ```
 
+A trained model could be downloaded here. 
+(
+[BaiduYun](https://pan.baidu.com/s/1frZ-MK-kB4rrr-cWDPHtFQ) with code: 42br,
+[GDrive](https://drive.google.com/file/d/1GJ3A0Y1pk6-5JV2eaL3FSKzJxurWkhrd/view?usp=sharing)
+)
+Unzip it and place it under "interpoetry" folder.
+
 ## Evaluation
 
 If you would like to run evaluations only, append these three lines to training params above.
@@ -129,7 +146,7 @@ python main.py
 ...(training params like shown above)...
 
 --eval_only True 
---model_path ./dumped/test/4909294/periodic-20.pth  # path of model to load from
+--model_path ./dumped/test/4949781/periodic-24.pth  # path of model to load from
 --dump_path ./dumped/test/eval_result               # result files to save to
 
 ```
