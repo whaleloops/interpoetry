@@ -1,7 +1,7 @@
 # Interpoetry
 
 This repository contains the original implementation of the unsupervised poem translation models presented in  
-[Interpoetry: Generating Classical Chinese Poems from Vernacular Chinese](link here) (EMNLP 2019). 
+[Generating Classical Chinese Poems from Vernacular Chinese](link here) (EMNLP 2019). 
 
 A fancy demonstration could be found [here](https://pengshancai.github.io/interpoetry/).
 
@@ -155,11 +155,11 @@ python main.py
 
 Please cite the following if you find this repo useful.
 
-### Interpoetry: Generating Classical Chinese Poems from Vernacular Chinese
+### Generating Classical Chinese Poems from Vernacular Chinese
 
 ```
 @inproceedings{yangcai2019interpoetry,
-  title={Interpoetry: Generating Classical Chinese Poems from Vernacular Chinese},
+  title={Generating Classical Chinese Poems from Vernacular Chinese},
   author={Yang, Zhichao and Cai, Pengshan and Feng, Yansong and Li, Fei and Feng, Weijiang and Chiu, Suet-Ying and Yu, Hong},
   booktitle = {Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
   year={2019}
