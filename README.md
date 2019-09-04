@@ -1,7 +1,7 @@
 # Interpoetry
 
 This repository contains the original implementation of the unsupervised poem translation models presented in  
-[Generating Classical Chinese Poems from Vernacular Chinese](link here) (EMNLP 2019). 
+[Generating Classical Chinese Poems from Vernacular Chinese](https://arxiv.org/abs/1909.00279) (EMNLP 2019). 
 
 A fancy demonstration could be found [here](https://pengshancai.github.io/interpoetry/).
 
@@ -36,7 +36,9 @@ Training data are collected from 281 sanwens and fictions written by more than 4
 Classical poem data for training are collected from [here](https://github.com/chinese-poetry/chinese-poetry). We further gather [seven-syllable Jueju](https://en.wikipedia.org/wiki/Qijue) from all Tang poems and Song poems. The dataset includes more than 270K seven-syllable Jueju. See this short [example](poem_test) for more detail.
 
 ### Parallel data (poems and thier translation)
-TODO
+From [online resources](https://so.gushiwen.org/gushi/songsan.aspx), we collected 487
+seven-character quatrain poems from Tang Poems and Song Poems, as well as their corresponding
+high quality vernacular translations. These poems could be used as gold standards for poems generated from their corresponding vernacular translations. This is also included in the processed data zip file.
 
 ### Preprocess
 
