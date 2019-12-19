@@ -163,8 +163,13 @@ Please cite the following if you find this repo useful.
 @inproceedings{yangcai2019interpoetry,
   title={Generating Classical Chinese Poems from Vernacular Chinese},
   author={Yang, Zhichao and Cai, Pengshan and Feng, Yansong and Li, Fei and Feng, Weijiang and Chiu, Suet-Ying and Yu, Hong},
-  booktitle = {Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
-  year={2019}
+  booktitle = "Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)",
+    month = nov,
+    year = "2019",
+    address = "Hong Kong, China",
+    publisher = "Association for Computational Linguistics",
+    url = "https://www.aclweb.org/anthology/D19-1637",
+    doi = "10.18653/v1/D19-1637"
 }
 ```
 
